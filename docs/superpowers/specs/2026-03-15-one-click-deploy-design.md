@@ -45,6 +45,8 @@ User Browser
    - `*.{domain}:443` — Proxy to Router `:6580` (WebSocket support)
 3. **HTTP→HTTPS redirect** — Port 80 returns 301 to 443.
 4. **k3s** — Disable built-in Traefik to avoid port conflicts; used only as container runtime for projects.
+5. **Simplified domain model** — The existing production setup uses a separate `playground.astratech.ae` for project subdomains. This script simplifies to a single domain: `*.{domain}` for projects, `launchpad.{sub}.{domain}` for dashboard. This reduces DNS and certificate complexity. The `BASE_DOMAIN` and `INGRESS_DOMAIN` env vars are both set to `{domain}`.
+6. **Admin API on port 6804** — The API container exposes both `:6802` (public API) and `:6804` (admin dashboard). Nginx routes `/admin/` to `:6804` on the same `api` container.
 
 ## Interactive Flow
 
@@ -64,7 +66,7 @@ User Browser
 ### Step 1: Domain Configuration
 
 ```
-[1/5] Basic Configuration
+[1/6] Basic Configuration
   Main domain (e.g. company.com):
   Subdomain prefix [corp]:
 
@@ -78,7 +80,7 @@ User Browser
 ### Step 2: SSL Certificate
 
 ```
-[2/5] SSL Certificate
+[2/6] SSL Certificate
   Certificate method:
     1) Let's Encrypt auto-apply (recommended)
     2) Provide certificate files
@@ -101,7 +103,7 @@ User Browser
 ### Step 3: Database
 
 ```
-[3/5] Database
+[3/6] Database
   Database mode:
     1) Built-in PostgreSQL + Redis (recommended)
     2) Use external database
@@ -111,10 +113,10 @@ User Browser
   # If 2 → prompt for connection strings
 ```
 
-### Step 3.5: Kubernetes
+### Step 4: Kubernetes
 
 ```
-[3.5/5] Kubernetes Cluster
+[4/6] Kubernetes Cluster
   K8s mode:
     1) Built-in k3s (recommended, auto-install on this machine)
     2) Use existing K8s cluster
@@ -130,10 +132,10 @@ User Browser
   ✓ Cluster connection verified: 3 nodes, v1.28.2
 ```
 
-### Step 4: Advanced Configuration
+### Step 5: Advanced Configuration
 
 ```
-[4/5] Advanced Configuration
+[5/6] Advanced Configuration
   Enter advanced configuration? [y/N]:
 
   # If y, show category menu:
@@ -167,10 +169,10 @@ User Browser
 
 Each advanced module has its own linear Q&A with defaults. Unconfigured modules use safe defaults (features disabled but won't break the system).
 
-### Step 5: Confirm and Deploy
+### Step 6: Confirm and Deploy
 
 ```
-[5/5] Deployment Summary
+[6/6] Deployment Summary
   ┌──────────────────────────────┐
   │ Domain:    company.com       │
   │ Dashboard: launchpad.corp... │
@@ -203,7 +205,7 @@ launchpad-setup/
     │   │   ├── render.sh       # Template rendering: .env + nginx.conf
     │   │   ├── certs.sh        # SSL certificates: Let's Encrypt (acme.sh) / user-provided
     │   │   ├── k3s.sh          # k3s install + disable Traefik / external K8s validation
-    │   │   ├── database.sh     # PostgreSQL init (5 schemas + users)
+    │   │   ├── database.sh     # PostgreSQL init (6 schemas + users) + Gitea DB
     │   │   └── deploy.sh       # docker compose up + health checks + result output
     │   └── lang/
     │       ├── en.sh           # English language pack
@@ -212,9 +214,11 @@ launchpad-setup/
     │   ├── env.template        # Launchpad .env template
     │   ├── env.gateway.template # Gateway .env template
     │   ├── nginx.conf.template # Merged single-layer Nginx config
+    │   ├── settings.yml.template # Runtime hot-reloadable settings
     │   └── docker-compose.yml.template  # Full orchestration (Nginx/Gitea/PG/Redis + all services)
     └── generated/              # Runtime generated (gitignored)
         ├── launchpad/.env
+        ├── launchpad/config/settings.yml
         ├── gateway/.env
         ├── nginx/
         │   ├── nginx.conf
@@ -227,13 +231,20 @@ launchpad-setup/
 
 ### Method
 
-Use `envsubst` — zero dependencies, templates use `${VARIABLE}` placeholders.
+Use `envsubst` for `.env` and `nginx.conf` templates (simple variable substitution). For `docker-compose.yml.template`, use a Bash-based renderer in `render.sh` that handles conditional blocks (e.g., including/excluding `postgres` and `redis` services based on built-in vs. external mode). This avoids introducing dependencies like `jinja2` or `gomplate`.
 
 ```bash
 render_template() {
     local template="$1"
     local output="$2"
     envsubst < "$template" > "$output"
+}
+
+# For docker-compose: Bash heredoc with conditionals
+render_compose() {
+    # Generates docker-compose.yml using shell conditionals
+    # for DB_MODE=builtin vs external, K8S_MODE=builtin vs external
+    # Output written to generated/docker-compose.yml
 }
 ```
 
@@ -254,8 +265,11 @@ render_template() {
 | Variable | Method |
 |----------|--------|
 | `JWT_SECRET` | `openssl rand -hex 32` |
+| `JWT_REFRESH_SECRET` | `openssl rand -hex 32` |
 | `SESSION_SECRET` | `openssl rand -hex 32` |
 | `ENCRYPTION_KEY` | `openssl rand -hex 16` |
+| `CLAUDE_CREDENTIALS_ENCRYPTION_KEY` | `openssl rand -hex 16` (exactly 32 chars) |
+| `SSH_KEY_ENCRYPTION_SECRET` | `openssl rand -hex 16` (32+ chars) |
 | `ZT_PRIVATE_KEY` | `openssl genrsa 2048 \| base64` |
 | `ZT_PUBLIC_KEY` | Derived from private key |
 | `DB_PASSWORD_MAIN` | `openssl rand -base64 18` |
@@ -263,8 +277,31 @@ render_template() {
 | `DB_PASSWORD_EVENTS` | `openssl rand -base64 18` |
 | `DB_PASSWORD_BILLING` | `openssl rand -base64 18` |
 | `DB_PASSWORD_STATS` | `openssl rand -base64 18` |
+| `DB_PASSWORD_GATEWAY` | `openssl rand -base64 18` |
 | `GITEA_DB_PASSWORD` | `openssl rand -base64 18` |
 | `REDIS_PASSWORD` | `openssl rand -base64 18` |
+| `ANI_CODE_GATEWAY_API_KEY` | `openssl rand -hex 16` |
+| `LAUNCHPAD_INTERNAL_SECRET` | `openssl rand -hex 16` |
+
+**Derived from domain (render.sh auto-computes):**
+
+| Variable | Derivation |
+|----------|------------|
+| `EXTERNAL_DOMAIN` | `https://${LAUNCHPAD_DOMAIN}` |
+| `PUBLIC_DOMAIN` | `${LAUNCHPAD_DOMAIN}` |
+| `PUBLIC_URL` | `https://${LAUNCHPAD_DOMAIN}` |
+| `EXTERNAL_API_URL` | `https://${LAUNCHPAD_DOMAIN}/api` |
+| `INTERNAL_API_URL` | `https://${LAUNCHPAD_DOMAIN}/api` |
+| `INTERNAL_ADMIN_URL` | `https://${LAUNCHPAD_DOMAIN}/admin/adminapi` |
+| `CORS_ORIGINS` | `https://${LAUNCHPAD_DOMAIN}` |
+| `INGRESS_DOMAIN` | `${DOMAIN}` |
+| `BASE_DOMAIN` | `${DOMAIN}` |
+| `ANI_CODE_GATEWAY_URL` | `https://${LAUNCHPAD_DOMAIN}/gatewayproxy` |
+| `ANI_CODE_RELEASE_URL` | `https://${GITEA_DOMAIN}/launchpad/ani-code/archive/main.tar.gz` |
+| `GITEA_ROOT_URL` | `https://${GITEA_DOMAIN}` |
+| `GITEA_GIT_SSH` | `git@${GITEA_DOMAIN}:2222` |
+| `ENTRA_REDIRECT_URI` | `https://${LAUNCHPAD_DOMAIN}/api/v1/auth/microsoft/callback` |
+| `GATEWAY_PUBLIC_URL` | `https://${LAUNCHPAD_DOMAIN}/gatewayproxy` |
 
 **Mode-dependent:**
 
@@ -272,6 +309,7 @@ render_template() {
 |----------|----------|----------|
 | `DB_HOST` | `postgres` (Docker service) | User-provided IP |
 | `DEFAULT_BACKEND` | `localhost` | User-provided ingress domain |
+| `STORAGE_CLASS` | `local-path` (k3s default) | User-provided (e.g. `managed-csi`) |
 
 ## K8s/k3s Integration
 
@@ -353,24 +391,42 @@ Single-layer Nginx replacing the previous two-layer setup (external VM + interna
 
 ```yaml
 services:
-  # ---- Infrastructure (conditional) ----
-  postgres:          # Built-in mode only, port 5432
-  redis:             # Built-in mode only, port 6379
+  # ---- Infrastructure (conditional: only in built-in mode) ----
+  postgres:          # PostgreSQL 15, port 5432, with healthcheck
+  redis:             # Redis 7 Alpine, port 6379, with healthcheck
 
   # ---- Core services ----
-  api:               # Launchpad API (:6802)
+  api:               # Launchpad API (:6802, :6804 admin)
+                     #   volumes: logs/api, config/settings.yml, data/api, kubeconfig
   ui:                # Launchpad UI (:6801)
   router:            # Project routing (:6580)
-  cron:              # Scheduled jobs
+  cron:              # Scheduled jobs (mounts pd/deploy/crontab)
   backup-worker:     # Backup queue worker
 
   # ---- Additional services ----
-  gateway:           # ani-code Gateway (:6555)
-  gitea:             # Gitea (:3000, SSH :2222)
+  gateway:           # ani-code Gateway (:6555), volumes: gateway_data, logs
+  gitea:             # Gitea (:3000, SSH :2222), volumes: gitea_data
 
   # ---- Entry point ----
   nginx:             # TLS + reverse proxy (:80, :443)
+                     #   volumes: nginx.conf, certs/
 ```
+
+### Docker Image Registry
+
+Images are pulled from Azure Container Registry (`acrsvcprdastaen001.azurecr.io`). The script handles registry authentication:
+
+```bash
+# In detect.sh or deploy.sh
+setup_registry() {
+    # Option 1: User provides registry credentials (interactive prompt)
+    # Option 2: az acr login (if Azure CLI is available)
+    # Option 3: Docker config.json already authenticated (skip)
+    docker login "$REGISTRY_URL" -u "$REGISTRY_USER" -p "$REGISTRY_PASS"
+}
+```
+
+Registry configuration is added to the advanced configuration menu as an additional option. If registry auth fails, the script exits with a clear error before attempting to pull images.
 
 ## Deployment Execution Order
 
@@ -382,7 +438,7 @@ deploy_services() {
     wait_for_healthy redis 15
 
     # Phase 2: Database initialization (first deploy, built-in mode)
-    init_postgres_schemas    # 5 schemas + users + permissions
+    init_postgres_schemas    # 6 schemas: main, monitoring, events, billing, stats, gateway
     init_gitea_database      # gitea database
 
     # Phase 3: Application services
@@ -396,7 +452,10 @@ deploy_services() {
     docker compose up -d nginx
     wait_for_healthy nginx 15
 
-    # Phase 5: Cluster registration
+    # Phase 5: Gitea bootstrap (first deploy only)
+    bootstrap_gitea          # See "Gitea Bootstrap" section below
+
+    # Phase 6: Cluster registration
     register_cluster
 }
 ```
@@ -404,6 +463,75 @@ deploy_services() {
 ### Health Check Mechanism
 
 Each service has a Docker healthcheck defined. The script polls `docker inspect` for health status with a per-service timeout. On failure, the last 20 lines of logs are displayed.
+
+## Gitea Bootstrap
+
+After Gitea starts for the first time, the script automates initial setup via Gitea's API:
+
+1. **Create admin user** — `POST /api/v1/admin/users` (or via Gitea's first-run install API)
+2. **Create `launchpad` organization** — `POST /api/v1/orgs`
+3. **Create `ani-code` repository** — `POST /api/v1/orgs/launchpad/repos`
+4. **Generate access token** — `POST /api/v1/users/{admin}/tokens` → stored as `GITEA_ACCESS_TOKEN`
+5. **Configure SSH** — Gitea listens on port 2222 for git SSH
+
+The generated `GITEA_ACCESS_TOKEN` is written back to `generated/launchpad/.env` and the API container is restarted to pick it up.
+
+If Gitea is already initialized (re-run), this phase is skipped.
+
+## SSL Certificate Renewal
+
+When using Let's Encrypt via `acme.sh`:
+
+- `acme.sh` auto-installs a cron job for renewal (runs daily, renews at 60 days)
+- The `--reloadcmd` is set to reload the Nginx container after renewal:
+  ```bash
+  acme.sh --install-cert -d "${DOMAIN}" \
+      --key-file "generated/nginx/certs/..." \
+      --fullchain-file "generated/nginx/certs/..." \
+      --reloadcmd "docker compose -f generated/docker-compose.yml exec nginx nginx -s reload"
+  ```
+- Certificate files are mounted into the Nginx container via volume
+
+## Error Handling and Rollback
+
+### Deployment Failure Strategy
+
+On partial failure, the script does NOT automatically tear down already-running services. Instead:
+
+1. **Log the failed phase** clearly with the error and relevant container logs
+2. **Leave infrastructure running** — PostgreSQL, Redis, and successfully started services remain up
+3. **Provide recovery commands**:
+   ```
+   ✗ Phase 3 failed: API service did not become healthy
+
+   To retry from this phase:
+     ./deploy/setup.sh --resume
+
+   To view logs:
+     docker compose -f deploy/generated/docker-compose.yml logs api
+
+   To tear down everything:
+     ./deploy/setup.sh --uninstall
+   ```
+4. **`--resume` flag** — Skips completed phases (checks container health) and retries from the failed phase
+
+### register.sh Access
+
+The `register_cluster()` function accesses the API via Docker network, not `localhost`:
+
+```bash
+# Use Docker network for reliable access (API port may not be exposed to host)
+LAUNCHPAD_REGISTRATION_URL="http://api:6802/admin/adminapi/k3s/register"
+
+# For downloading register.sh, use the public HTTPS URL
+curl -fsSL "https://${LAUNCHPAD_DOMAIN}/admin/adminapi/k3s/register.sh"
+```
+
+If the public URL is not yet accessible (DNS not configured), fall back to running the curl inside the Docker network:
+
+```bash
+docker compose exec api curl -fsSL "http://localhost:6802/admin/adminapi/k3s/register.sh"
+```
 
 ## Final Output
 
