@@ -264,6 +264,8 @@ INFRA_EOF
       - GITEA__server__ROOT_URL=__GITEA_ROOT_URL__
       - GITEA__server__SSH_PORT=2222
       - GITEA__server__SSH_LISTEN_PORT=22
+      - GITEA__server__DISABLE_REGISTRATION=true
+      - GITEA__service__DISABLE_REGISTRATION=true
     volumes:
       - gitea-data:/data
     ports:
@@ -271,11 +273,11 @@ INFRA_EOF
     networks:
       - launchpad-network
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/api/v1/version || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/ -o /dev/null || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 15s
 
   nginx:
     image: nginx:alpine

@@ -63,7 +63,7 @@ deploy_services() {
     # Phase 3: Gitea first (API depends on GITEA_ACCESS_TOKEN)
     log_step "2/5" "$MSG_DEPLOY_GITEA"
     $COMPOSE_CMD up -d gitea
-    wait_for_healthy gitea 45 || deploy_fail "gitea"
+    wait_for_healthy gitea 90 || deploy_fail "gitea"
     bootstrap_gitea || deploy_fail "gitea bootstrap"
 
     # Phase 4: Application services (now .env has GITEA_ACCESS_TOKEN)
