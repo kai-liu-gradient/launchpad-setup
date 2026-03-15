@@ -56,9 +56,13 @@ deploy_services() {
 
     # Phase 2: Database init + schema migration
     init_database || deploy_fail "database initialization"
-    log_info "Running Prisma schema migration..."
-    $COMPOSE_CMD run --rm api npx prisma db push || deploy_fail "prisma db push"
-    log_ok "Database schema synced"
+    log_info "Running Prisma schema migrations..."
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema.prisma || deploy_fail "prisma db push (main)"
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/monitoring.prisma || deploy_fail "prisma db push (monitoring)"
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema-billing.prisma || deploy_fail "prisma db push (billing)"
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema-events.prisma || deploy_fail "prisma db push (events)"
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema-stats.prisma || deploy_fail "prisma db push (stats)"
+    log_ok "All database schemas synced"
 
     # Phase 3: Gitea first (API depends on GITEA_ACCESS_TOKEN)
     log_step "2/5" "$MSG_DEPLOY_GITEA"

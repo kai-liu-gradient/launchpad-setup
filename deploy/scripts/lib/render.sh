@@ -159,9 +159,9 @@ INFRA_EOF
     networks:
       - launchpad-network
     healthcheck:
-      test: ["CMD", "node", "scripts/healthcheck.js"]
-      interval: 15s
-      timeout: 10s
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 6802 || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 5
       start_period: 30s
 
