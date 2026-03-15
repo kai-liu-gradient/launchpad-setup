@@ -74,7 +74,6 @@ case "$ACTION" in
         # Phase 5: Deploy
         setup_kubernetes
         setup_certificates
-        init_database
         deploy_services
         bootstrap_gitea
         register_cluster
