@@ -35,7 +35,9 @@ collect_basic_config() {
 
     # Step 2: SSL
     log_step "2/6" "$MSG_STEP_SSL"
-    SSL_MODE=$(ask_choice "$MSG_SSL_METHOD" "1" "$MSG_SSL_LETSENCRYPT" "$MSG_SSL_SELFSIGNED" "$MSG_SSL_CUSTOM")
+    local ssl_default="1"
+    [[ "$PLATFORM" == "Darwin" ]] && ssl_default="2"
+    SSL_MODE=$(ask_choice "$MSG_SSL_METHOD" "$ssl_default" "$MSG_SSL_LETSENCRYPT" "$MSG_SSL_SELFSIGNED" "$MSG_SSL_CUSTOM")
 
     case "$SSL_MODE" in
         1)  # Let's Encrypt
