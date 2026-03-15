@@ -10,54 +10,18 @@ setup_kubernetes() {
 }
 
 install_k3s() {
-    # Check if k3s is already running (works on both Linux and macOS)
-    if command -v k3s &>/dev/null; then
-        if k3s kubectl get nodes &>/dev/null 2>&1; then
-            log_ok "k3s already installed and running"
-            # Use existing kubeconfig — k3s default or user-specified
-            if [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
-                export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-            fi
-            return 0
-        fi
+    # If kubectl works, k3s (or any k8s) is already running — done
+    if kubectl get nodes &>/dev/null; then
+        log_ok "k3s already running"
+        return 0
     fi
 
-    # k3s not running — attempt installation
+    # Not running — install on Linux, guide on macOS
     if [[ "$PLATFORM" == "Darwin" ]]; then
-        # macOS: try k3d (k3s-in-Docker) if available
-        if command -v k3d &>/dev/null; then
-            log_info "Creating k3s cluster via k3d..."
-            k3d cluster create launchpad \
-                --port "80:80@loadbalancer" \
-                --port "443:443@loadbalancer" \
-                --k3s-arg "--disable=traefik@server:0" \
-                --wait || {
-                log_error "k3d cluster creation failed"
-                return 1
-            }
-            log_ok "k3d cluster 'launchpad' created"
-            return 0
-        fi
-
-        # No k3s, no k3d — guide user
-        log_error "k3s is not running and cannot be auto-installed on macOS."
-        echo ""
-        echo "  Install via one of these methods, then re-run setup:"
-        echo ""
-        echo "    # Option 1: k3d (k3s in Docker, recommended)"
-        echo "    brew install k3d"
-        echo "    k3d cluster create launchpad --port '80:80@loadbalancer' --port '443:443@loadbalancer'"
-        echo ""
-        echo "    # Option 2: Lima"
-        echo "    brew install lima"
-        echo "    limactl start --name=k3s template://k3s"
-        echo ""
-        echo "    # Option 3: Switch to external K8s mode (--reconfigure)"
-        echo ""
+        log_error "kubectl not available. Please install and start k3s first, then re-run setup."
         exit 1
     fi
 
-    # Linux: standard k3s installation
     log_info "Installing k3s..."
 
     local internal_ip
@@ -68,12 +32,11 @@ install_k3s() {
         --tls-san "$internal_ip" \
         --write-kubeconfig-mode 644
 
-    # Wait for k3s to be ready
     log_info "Waiting for k3s to be ready..."
     local timeout=60 elapsed=0
     export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     while [[ $elapsed -lt $timeout ]]; do
-        if k3s kubectl get nodes &>/dev/null; then
+        if kubectl get nodes &>/dev/null; then
             log_ok "k3s is ready"
             return 0
         fi
@@ -126,13 +89,10 @@ register_cluster() {
     fi
     chmod +x "$register_script"
 
-    # register.sh runs on the host. Try public HTTPS URL first; if DNS not yet configured,
-    # fall back to localhost via Nginx (which is listening on 443 on the host).
     local internal_ip
     internal_ip=$(detect_internal_ip 2>/dev/null || echo "127.0.0.1")
     local reg_url="https://${LAUNCHPAD_DOMAIN}/admin/adminapi/k3s/register"
 
-    # Test if the public URL is reachable; if not, use IP with Host header via --resolve
     if ! curl -sf --max-time 5 "https://${LAUNCHPAD_DOMAIN}" -o /dev/null 2>/dev/null; then
         log_warn "Public URL not reachable (DNS may not be configured). Using IP with SNI."
         reg_url="https://${internal_ip}/admin/adminapi/k3s/register"
