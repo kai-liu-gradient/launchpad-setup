@@ -3,10 +3,6 @@
 
 setup_kubernetes() {
     if [[ "$K8S_MODE" == "builtin" ]]; then
-        if [[ "$PLATFORM" == "Darwin" ]]; then
-            log_error "k3s cannot be installed on macOS. Please use external K8s mode (Colima, Docker Desktop, or kind)."
-            exit 1
-        fi
         install_k3s
     else
         validate_external_k8s
@@ -14,13 +10,54 @@ setup_kubernetes() {
 }
 
 install_k3s() {
-    # Skip if already installed
-    if command -v k3s &>/dev/null && systemctl is-active --quiet k3s 2>/dev/null; then
-        log_ok "k3s already installed and running"
-        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-        return 0
+    # Check if k3s is already running (works on both Linux and macOS)
+    if command -v k3s &>/dev/null; then
+        if k3s kubectl get nodes &>/dev/null 2>&1; then
+            log_ok "k3s already installed and running"
+            # Use existing kubeconfig — k3s default or user-specified
+            if [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
+                export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+            fi
+            return 0
+        fi
     fi
 
+    # k3s not running — attempt installation
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        # macOS: try k3d (k3s-in-Docker) if available
+        if command -v k3d &>/dev/null; then
+            log_info "Creating k3s cluster via k3d..."
+            k3d cluster create launchpad \
+                --port "80:80@loadbalancer" \
+                --port "443:443@loadbalancer" \
+                --k3s-arg "--disable=traefik@server:0" \
+                --wait || {
+                log_error "k3d cluster creation failed"
+                return 1
+            }
+            log_ok "k3d cluster 'launchpad' created"
+            return 0
+        fi
+
+        # No k3s, no k3d — guide user
+        log_error "k3s is not running and cannot be auto-installed on macOS."
+        echo ""
+        echo "  Install via one of these methods, then re-run setup:"
+        echo ""
+        echo "    # Option 1: k3d (k3s in Docker, recommended)"
+        echo "    brew install k3d"
+        echo "    k3d cluster create launchpad --port '80:80@loadbalancer' --port '443:443@loadbalancer'"
+        echo ""
+        echo "    # Option 2: Lima"
+        echo "    brew install lima"
+        echo "    limactl start --name=k3s template://k3s"
+        echo ""
+        echo "    # Option 3: Switch to external K8s mode (--reconfigure)"
+        echo ""
+        exit 1
+    fi
+
+    # Linux: standard k3s installation
     log_info "Installing k3s..."
 
     local internal_ip
