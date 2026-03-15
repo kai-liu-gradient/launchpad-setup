@@ -176,10 +176,11 @@ INFRA_EOF
     networks:
       - launchpad-network
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:6801 || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "node -e \"require('net').connect(6801,'127.0.0.1',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 15s
 
   router:
     image: __IMAGE_REGISTRY__/launchpad-router:__IMAGE_VERSION_ROUTER__
@@ -199,10 +200,11 @@ INFRA_EOF
     networks:
       - launchpad-network
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider http://localhost:6580/_health || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "node -e \"require('net').connect(6580,'127.0.0.1',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 15s
 
   cron:
     image: __IMAGE_REGISTRY__/launchpad-api:__IMAGE_VERSION_API__
@@ -247,10 +249,11 @@ INFRA_EOF
     networks:
       - launchpad-network
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:6555/health || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "node -e \"require('net').connect(6555,'127.0.0.1',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 15s
 
   gitea:
     image: gitea/gitea:__IMAGE_VERSION_GITEA__

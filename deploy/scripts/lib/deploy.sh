@@ -73,9 +73,9 @@ deploy_services() {
     # Phase 4: Application services (now .env has GITEA_ACCESS_TOKEN)
     log_step "3/5" "$MSG_DEPLOY_SERVICES"
     $COMPOSE_CMD up -d api ui router cron backup-worker gateway
-    wait_for_healthy api 60 || deploy_fail "application services (api)"
-    wait_for_healthy ui 30 || deploy_fail "application services (ui)"
-    wait_for_healthy router 30 || deploy_fail "application services (router)"
+    wait_for_healthy api 90 || deploy_fail "application services (api)"
+    wait_for_healthy ui 60 || deploy_fail "application services (ui)"
+    wait_for_healthy router 60 || deploy_fail "application services (router)"
 
     # Phase 5: Nginx
     log_step "4/5" "$MSG_DEPLOY_NGINX"
