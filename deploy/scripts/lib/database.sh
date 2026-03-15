@@ -49,6 +49,7 @@ GRANT USAGE ON SCHEMA ${schema} TO ${user};
 GRANT CREATE ON SCHEMA ${schema} TO ${user};
 ALTER DEFAULT PRIVILEGES IN SCHEMA ${schema} GRANT ALL ON TABLES TO ${user};
 ALTER DEFAULT PRIVILEGES IN SCHEMA ${schema} GRANT ALL ON SEQUENCES TO ${user};
+ALTER ROLE ${user} SET search_path TO ${schema}, public;
 SQL
         log_ok "Schema: $schema"
     done
