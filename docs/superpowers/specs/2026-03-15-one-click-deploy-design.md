@@ -412,21 +412,20 @@ services:
                      #   volumes: nginx.conf, certs/
 ```
 
-### Docker Image Registry
+### Docker Images
 
-Images are pulled from Azure Container Registry (`acrsvcprdastaen001.azurecr.io`). The script handles registry authentication:
+Images are referenced by a configurable registry prefix. The script prompts for the image registry in basic configuration:
 
-```bash
-# In detect.sh or deploy.sh
-setup_registry() {
-    # Option 1: User provides registry credentials (interactive prompt)
-    # Option 2: az acr login (if Azure CLI is available)
-    # Option 3: Docker config.json already authenticated (skip)
-    docker login "$REGISTRY_URL" -u "$REGISTRY_USER" -p "$REGISTRY_PASS"
-}
+```
+  Image registry [ghcr.io/anilaunchpad]:
 ```
 
-Registry configuration is added to the advanced configuration menu as an additional option. If registry auth fails, the script exits with a clear error before attempting to pull images.
+This generates image references like:
+- `{REGISTRY}/launchpad-api:1.18.7`
+- `{REGISTRY}/launchpad-ui:1.18.6`
+- `{REGISTRY}/launchpad-router:1.16.2`
+
+Supports any source: public registry, private registry (user handles `docker login` beforehand), or pre-loaded local images. The script verifies images are pullable before starting deployment.
 
 ## Deployment Execution Order
 

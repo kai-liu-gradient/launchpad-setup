@@ -412,21 +412,20 @@ services:
                      #   挂载: nginx.conf, certs/
 ```
 
-### Docker 镜像仓库
+### Docker 镜像
 
-镜像从 Azure Container Registry (`acrsvcprdastaen001.azurecr.io`) 拉取。脚本处理仓库认证：
+镜像通过可配置的仓库前缀引用。脚本在基础配置中提示输入镜像仓库地址：
 
-```bash
-# 在 detect.sh 或 deploy.sh 中
-setup_registry() {
-    # 方式 1: 用户提供仓库凭证（交互提示）
-    # 方式 2: az acr login（如果安装了 Azure CLI）
-    # 方式 3: Docker config.json 已认证（跳过）
-    docker login "$REGISTRY_URL" -u "$REGISTRY_USER" -p "$REGISTRY_PASS"
-}
+```
+  镜像仓库地址 [ghcr.io/anilaunchpad]:
 ```
 
-镜像仓库配置作为高级配置菜单的附加选项。如果仓库认证失败，脚本在尝试拉取镜像之前退出并显示明确错误。
+生成的镜像引用格式：
+- `{REGISTRY}/launchpad-api:1.18.7`
+- `{REGISTRY}/launchpad-ui:1.18.6`
+- `{REGISTRY}/launchpad-router:1.16.2`
+
+支持任意来源：公共仓库、私有仓库（用户事先自行完成 `docker login`）、或已预加载的本地镜像。脚本在启动部署前验证镜像是否可拉取。
 
 ## 部署执行顺序
 
