@@ -420,10 +420,39 @@ Images are referenced by a configurable registry prefix. The script prompts for 
   Image registry [ghcr.io/anilaunchpad]:
 ```
 
-This generates image references like:
-- `{REGISTRY}/launchpad-api:1.18.7`
-- `{REGISTRY}/launchpad-ui:1.18.6`
-- `{REGISTRY}/launchpad-router:1.16.2`
+In basic configuration, a single unified version is prompted:
+
+```
+  Image registry [ghcr.io/anilaunchpad]:
+  Image version [latest]:
+```
+
+All services default to the same version: `{REGISTRY}/launchpad-api:{VERSION}`, `{REGISTRY}/launchpad-ui:{VERSION}`, etc.
+
+In advanced configuration ("Performance tuning" module), individual service versions can be overridden:
+
+```
+  ── Image Versions ──
+  Unified version: 1.18.7
+  Override per-service (leave empty to keep unified version):
+    API     [1.18.7]:
+    UI      [1.18.7]: 1.18.6
+    Router  [1.18.7]: 1.16.2
+    Gateway [1.18.7]:
+    Gitea   [1.18.7]: 1.21
+```
+
+Template variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMAGE_REGISTRY` | `ghcr.io/anilaunchpad` | Registry prefix |
+| `IMAGE_VERSION` | `latest` | Unified version |
+| `IMAGE_VERSION_API` | `${IMAGE_VERSION}` | API override |
+| `IMAGE_VERSION_UI` | `${IMAGE_VERSION}` | UI override |
+| `IMAGE_VERSION_ROUTER` | `${IMAGE_VERSION}` | Router override |
+| `IMAGE_VERSION_GATEWAY` | `${IMAGE_VERSION}` | Gateway override |
+| `IMAGE_VERSION_GITEA` | `${IMAGE_VERSION}` | Gitea override |
 
 Supports any source: public registry, private registry (user handles `docker login` beforehand), or pre-loaded local images. The script verifies images are pullable before starting deployment.
 

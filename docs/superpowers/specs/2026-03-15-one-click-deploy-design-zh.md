@@ -420,10 +420,39 @@ services:
   镜像仓库地址 [ghcr.io/anilaunchpad]:
 ```
 
-生成的镜像引用格式：
-- `{REGISTRY}/launchpad-api:1.18.7`
-- `{REGISTRY}/launchpad-ui:1.18.6`
-- `{REGISTRY}/launchpad-router:1.16.2`
+基础配置中提示输入统一版本号：
+
+```
+  镜像仓库地址 [ghcr.io/anilaunchpad]:
+  镜像版本 [latest]:
+```
+
+所有服务默认使用相同版本：`{REGISTRY}/launchpad-api:{VERSION}`、`{REGISTRY}/launchpad-ui:{VERSION}` 等。
+
+高级配置（"性能调优"模块）中可单独覆盖每个服务的版本：
+
+```
+  ── 镜像版本 ──
+  统一版本已设为: 1.18.7
+  如需单独指定，请输入 (留空保持统一版本):
+    API     版本 [1.18.7]:
+    UI      版本 [1.18.7]: 1.18.6
+    Router  版本 [1.18.7]: 1.16.2
+    Gateway 版本 [1.18.7]:
+    Gitea   版本 [1.18.7]: 1.21
+```
+
+模板变量：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `IMAGE_REGISTRY` | `ghcr.io/anilaunchpad` | 仓库前缀 |
+| `IMAGE_VERSION` | `latest` | 统一版本 |
+| `IMAGE_VERSION_API` | `${IMAGE_VERSION}` | API 单独覆盖 |
+| `IMAGE_VERSION_UI` | `${IMAGE_VERSION}` | UI 单独覆盖 |
+| `IMAGE_VERSION_ROUTER` | `${IMAGE_VERSION}` | Router 单独覆盖 |
+| `IMAGE_VERSION_GATEWAY` | `${IMAGE_VERSION}` | Gateway 单独覆盖 |
+| `IMAGE_VERSION_GITEA` | `${IMAGE_VERSION}` | Gitea 单独覆盖 |
 
 支持任意来源：公共仓库、私有仓库（用户事先自行完成 `docker login`）、或已预加载的本地镜像。脚本在启动部署前验证镜像是否可拉取。
 
