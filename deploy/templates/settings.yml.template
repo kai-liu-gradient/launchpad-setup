@@ -1,0 +1,121 @@
+# System Runtime Settings - Hot-Reloadable Configuration
+version: 1
+
+registration:
+  restrictDomain: true
+  allowedDomains: ["${DOMAIN}"]
+  requireEmailVerification: true
+  notice: "Registration is restricted to authorized domains"
+  blockedNotice: "This email domain is not authorized for registration"
+
+plans:
+  enforceFreePlan: false
+  disabled: []
+  disabledNotice: "Plan upgrades are temporarily unavailable"
+
+credentials:
+  claudeIncluded:
+    disabled: false
+    notice: "Claude credential service is currently at capacity"
+  zaiIncluded:
+    disabled: false
+    notice: "ZAI credential service is under maintenance"
+  claudePaygo:
+    disabled: false
+    notice: "Claude PayGo is temporarily unavailable"
+  zaiPaygo:
+    disabled: false
+    notice: "ZAI PayGo is temporarily unavailable"
+  geminiPaygo:
+    disabled: false
+    notice: "Gemini is temporarily unavailable"
+
+projects:
+  createDisabled: false
+  createDisabledNotice: "Project creation is temporarily disabled for maintenance"
+
+authentication:
+  mode: "standard"
+  passwordLogin:
+    enabled: true
+    enableSignup: true
+    disabledNotice: "Password login is disabled. Please use SSO."
+  oauth:
+    google:
+      enabled: false
+      allowSignup: true
+    github:
+      enabled: false
+      allowSignup: true
+    microsoft:
+      enabled: false
+      allowSignup: true
+      enforceOnly: false
+  providerSignup: true
+  ssoOnlyNotice: "This system requires SSO login. Contact your administrator."
+
+welcomeCredits:
+  enabled: true
+  amount: 100
+  campaignStart: ""
+  campaignEnd: ""
+  message: "Welcome! You've received {amount} free credits to get started."
+
+menu:
+  docs:
+    visible: false
+
+yamlBuilder:
+  allowedUsers: "*"
+
+aiMarketplace:
+  visible: true
+  enabledProviders:
+    - "claude"
+    - "zai"
+    - "gemini"
+
+operationsReport:
+  enabled: true
+  adminEmails:
+    - "${ADMIN_EMAIL}"
+  sendTime: "04:00"
+  balanceForecastDays: 7
+  topResourceCount: 5
+
+emailSuppression:
+  suppressedRecipients: []
+
+notices:
+  projectList:
+    enabled: false
+    severity: "warning"
+    dismissible: false
+    title: ""
+    message: ""
+    linkUrl: ""
+    linkText: ""
+  codingAgent:
+    enabled: false
+    severity: "warning"
+    dismissible: false
+    title: ""
+    message: ""
+    linkUrl: ""
+    linkText: ""
+  billing:
+    enabled: false
+    severity: "warning"
+    dismissible: false
+    title: ""
+    message: ""
+    linkUrl: ""
+    linkText: ""
+  creditDrawer:
+    enabled: false
+    severity: "warning"
+    dismissible: false
+    title: ""
+    message: ""
+    linkUrl: ""
+    linkText: ""
