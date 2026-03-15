@@ -73,6 +73,9 @@ git commit -m "feat: scaffold deploy directory structure and versions.conf"
 #!/bin/bash
 # Common utility functions for AniLaunchpad setup
 
+# Platform detection
+PLATFORM="$(uname -s)"  # Linux or Darwin
+
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -147,6 +150,15 @@ validate_port() {
 
 validate_file_exists() {
     [[ -f "$1" ]]
+}
+
+# Cross-platform sed -i (GNU vs BSD)
+sed_i() {
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        sed -i '' "$@"
+    else
+        sed -i "$@"
+    fi
 }
 
 # ask PROMPT — simple prompt, returns input (no default)
@@ -296,6 +308,7 @@ MSG_K8S_CONTEXT="K8s Context name (leave empty for current)"
 MSG_K8S_INGRESS="Ingress backend domain"
 MSG_K8S_STORAGE_CLASS="Storage Class"
 MSG_K8S_VERIFIED="Cluster connection verified"
+MSG_K8S_MACOS_WARN="macOS detected: k3s not available, using external K8s mode (Colima/Docker Desktop/kind)"
 
 # Advanced
 MSG_ADV_ENTER="Enter advanced configuration?"
@@ -464,6 +477,7 @@ MSG_K8S_CONTEXT="K8s Context 名称（留空使用当前）"
 MSG_K8S_INGRESS="Ingress 后端域名"
 MSG_K8S_STORAGE_CLASS="Storage Class"
 MSG_K8S_VERIFIED="集群连接已验证"
+MSG_K8S_MACOS_WARN="检测到 macOS：k3s 不可用，已切换为外部 K8s 模式（Colima/Docker Desktop/kind）"
 
 # Advanced
 MSG_ADV_ENTER="是否进入高级配置？"
@@ -743,13 +757,12 @@ check_environment() {
 
     local errors=0
 
-    # OS check
-    if [[ "$(uname -s)" != "Linux" ]]; then
-        log_error "$MSG_DETECT_OS: $(uname -s) — Linux required"
-        ((errors++))
-    else
-        log_ok "$MSG_DETECT_OS: $(uname -s) $(uname -r)"
-    fi
+    # OS check — support Linux and macOS
+    case "$PLATFORM" in
+        Linux)  log_ok "$MSG_DETECT_OS: Linux $(uname -r)" ;;
+        Darwin) log_ok "$MSG_DETECT_OS: macOS $(sw_vers -productVersion 2>/dev/null || uname -r)" ;;
+        *)      log_error "$MSG_DETECT_OS: $(uname -s) — not supported"; ((errors++)) ;;
+    esac
 
     # Docker
     if ! command -v docker &>/dev/null; then
@@ -780,7 +793,11 @@ check_environment() {
 
     # Disk space (min 10GB free)
     local free_gb
-    free_gb=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        free_gb=$(df -g / | awk 'NR==2 {print $4}')
+    else
+        free_gb=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
+    fi
     if [[ "$free_gb" -lt 10 ]]; then
         log_error "$MSG_DETECT_DISK: ${free_gb}GB free (minimum 10GB)"
         ((errors++))
@@ -790,7 +807,11 @@ check_environment() {
 
     # Memory (min 2GB)
     local mem_mb
-    mem_mb=$(free -m | awk '/^Mem:/ {print $7}')
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        mem_mb=$(( $(sysctl -n hw.memsize) / 1024 / 1024 ))
+    else
+        mem_mb=$(free -m | awk '/^Mem:/ {print $7}')
+    fi
     if [[ "$mem_mb" -lt 2048 ]]; then
         log_warn "$MSG_DETECT_MEMORY: ${mem_mb}MB available (recommended 4GB+)"
     else
@@ -801,13 +822,24 @@ check_environment() {
     local ports=(80 443 5432 6379 6555 6801 6802 6804 3000 2222)
     local port_errors=0
     for port in "${ports[@]}"; do
-        if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
+        local in_use=false
+        if [[ "$PLATFORM" == "Darwin" ]]; then
+            lsof -iTCP:"$port" -sTCP:LISTEN -P -n &>/dev/null && in_use=true
+        else
+            ss -tlnp 2>/dev/null | grep -q ":${port} " && in_use=true
+        fi
+        if $in_use; then
             log_warn "$MSG_ERR_PORT_IN_USE: $port"
             ((port_errors++))
         fi
     done
     if [[ "$port_errors" -eq 0 ]]; then
         log_ok "$MSG_DETECT_PORTS: all available"
+    fi
+
+    # macOS-specific notes
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        log_warn "macOS detected: k3s not available, use external K8s (Colima/Docker Desktop/kind)"
     fi
 
     if [[ "$errors" -gt 0 ]]; then
@@ -819,17 +851,29 @@ check_environment() {
 # Detect internal IP (for k3s tls-san and DNS reminder)
 detect_internal_ip() {
     local ip=""
-    # Try common interfaces
-    for iface in lan0 eth0 ens3 ens5; do
-        ip=$(ip addr show "$iface" 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d'/' -f1 | head -1)
+
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        # macOS: use ipconfig on active interface
+        ip=$(ipconfig getifaddr en0 2>/dev/null)
         [[ -n "$ip" ]] && echo "$ip" && return 0
-    done
-    # Fallback: first non-localhost
-    ip=$(ip -4 addr show | grep "inet " | awk '{print $2}' | cut -d'/' -f1 | grep -v '^127\.' | head -1)
-    [[ -n "$ip" ]] && echo "$ip" && return 0
-    # Last resort
-    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-    [[ -n "$ip" && "$ip" != "127.0.0.1" ]] && echo "$ip" && return 0
+        ip=$(ipconfig getifaddr en1 2>/dev/null)
+        [[ -n "$ip" ]] && echo "$ip" && return 0
+        # Fallback: route-based detection
+        ip=$(route get default 2>/dev/null | awk '/interface:/ {print $2}' | xargs ipconfig getifaddr 2>/dev/null)
+        [[ -n "$ip" ]] && echo "$ip" && return 0
+    else
+        # Linux: try common interfaces
+        for iface in lan0 eth0 ens3 ens5; do
+            ip=$(ip addr show "$iface" 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d'/' -f1 | head -1)
+            [[ -n "$ip" ]] && echo "$ip" && return 0
+        done
+        # Fallback: first non-localhost
+        ip=$(ip -4 addr show | grep "inet " | awk '{print $2}' | cut -d'/' -f1 | grep -v '^127\.' | head -1)
+        [[ -n "$ip" ]] && echo "$ip" && return 0
+        # Last resort
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+        [[ -n "$ip" && "$ip" != "127.0.0.1" ]] && echo "$ip" && return 0
+    fi
     return 1
 }
 ```
@@ -1078,9 +1122,16 @@ collect_basic_config() {
 
     # Step 4: K8s
     log_step "4/6" "$MSG_STEP_K8S"
-    K8S_MODE=$(ask_choice "$MSG_K8S_MODE" "1" "$MSG_K8S_BUILTIN" "$MSG_K8S_EXTERNAL")
 
-    if [[ "$K8S_MODE" == "2" ]]; then
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        # macOS: k3s not available, default to external
+        log_warn "$MSG_K8S_MACOS_WARN"
+        K8S_MODE="external"
+    else
+        K8S_MODE=$(ask_choice "$MSG_K8S_MODE" "1" "$MSG_K8S_BUILTIN" "$MSG_K8S_EXTERNAL")
+    fi
+
+    if [[ "$K8S_MODE" == "2" || "$K8S_MODE" == "external" ]]; then
         K8S_MODE="external"
         K8S_KUBECONFIG_PATH=$(ask_default "$MSG_K8S_KUBECONFIG" "${K8S_KUBECONFIG_PATH:-~/.kube/config}")
         K8S_CONTEXT=$(ask_default "$MSG_K8S_CONTEXT" "")
@@ -1740,7 +1791,7 @@ INFRA_EOF
 SERVICES_EOF
 
     # Replace __PLACEHOLDER__ tokens with actual variable values
-    sed -i \
+    sed_i \
         -e "s|__IMAGE_REGISTRY__|${IMAGE_REGISTRY}|g" \
         -e "s|__IMAGE_VERSION_API__|${IMAGE_VERSION_API}|g" \
         -e "s|__IMAGE_VERSION_UI__|${IMAGE_VERSION_UI}|g" \
@@ -1948,6 +1999,10 @@ git commit -m "feat: add certs.sh SSL certificate management (Let's Encrypt + cu
 
 setup_kubernetes() {
     if [[ "$K8S_MODE" == "builtin" ]]; then
+        if [[ "$PLATFORM" == "Darwin" ]]; then
+            log_error "k3s cannot be installed on macOS. Please use external K8s mode (Colima, Docker Desktop, or kind)."
+            exit 1
+        fi
         install_k3s
     else
         validate_external_k8s
