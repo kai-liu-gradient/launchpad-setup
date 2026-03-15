@@ -75,7 +75,6 @@ case "$ACTION" in
         setup_kubernetes
         setup_certificates
         deploy_services
-        bootstrap_gitea
         register_cluster
 
         # Done

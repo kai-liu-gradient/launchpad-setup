@@ -48,7 +48,7 @@ deploy_services() {
 
     # Phase 1: Infrastructure
     if [[ "$DB_MODE" == "builtin" ]]; then
-        log_step "1/4" "$MSG_DEPLOY_INFRA"
+        log_step "1/5" "$MSG_DEPLOY_INFRA"
         $COMPOSE_CMD up -d postgres redis
         wait_for_healthy postgres 30 || deploy_fail "infrastructure (postgres)"
         wait_for_healthy redis 15 || deploy_fail "infrastructure (redis)"
@@ -57,16 +57,21 @@ deploy_services() {
     # Phase 2: Database init
     init_database || deploy_fail "database initialization"
 
-    # Phase 3: Application services
-    log_step "2/4" "$MSG_DEPLOY_SERVICES"
-    $COMPOSE_CMD up -d api ui router cron backup-worker gateway gitea
+    # Phase 3: Gitea first (API depends on GITEA_ACCESS_TOKEN)
+    log_step "2/5" "$MSG_DEPLOY_GITEA"
+    $COMPOSE_CMD up -d gitea
+    wait_for_healthy gitea 45 || deploy_fail "gitea"
+    bootstrap_gitea || deploy_fail "gitea bootstrap"
+
+    # Phase 4: Application services (now .env has GITEA_ACCESS_TOKEN)
+    log_step "3/5" "$MSG_DEPLOY_SERVICES"
+    $COMPOSE_CMD up -d api ui router cron backup-worker gateway
     wait_for_healthy api 60 || deploy_fail "application services (api)"
     wait_for_healthy ui 30 || deploy_fail "application services (ui)"
     wait_for_healthy router 30 || deploy_fail "application services (router)"
-    wait_for_healthy gitea 45 || deploy_fail "application services (gitea)"
 
-    # Phase 4: Nginx
-    log_step "3/4" "$MSG_DEPLOY_NGINX"
+    # Phase 5: Nginx
+    log_step "4/5" "$MSG_DEPLOY_NGINX"
     $COMPOSE_CMD up -d nginx
     wait_for_healthy nginx 15 || deploy_fail "nginx"
 
@@ -129,14 +134,10 @@ bootstrap_gitea() {
             -H "Content-Type: application/json" \
             -d '{"name":"ani-code","auto_init":true,"default_branch":"main"}' >/dev/null
 
-        # Write token back to .env
+        # Write token back to .env (API reads it on next start)
         echo "" >> "${DEPLOY_DIR}/generated/launchpad/.env"
         echo "GITEA_ACCESS_TOKEN=${GITEA_ACCESS_TOKEN}" >> "${DEPLOY_DIR}/generated/launchpad/.env"
         echo "GITEA_USER=${gitea_admin}" >> "${DEPLOY_DIR}/generated/launchpad/.env"
-
-        # Restart API to pick up new token
-        $COMPOSE_CMD restart api
-        wait_for_healthy api 60
 
         log_ok "Gitea bootstrapped (admin: $gitea_admin, org: launchpad, repo: ani-code)"
     else
