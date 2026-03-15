@@ -54,8 +54,11 @@ deploy_services() {
         wait_for_healthy redis 15 || deploy_fail "infrastructure (redis)"
     fi
 
-    # Phase 2: Database init
+    # Phase 2: Database init + schema migration
     init_database || deploy_fail "database initialization"
+    log_info "Running Prisma schema migration..."
+    $COMPOSE_CMD run --rm api npx prisma db push || deploy_fail "prisma db push"
+    log_ok "Database schema synced"
 
     # Phase 3: Gitea first (API depends on GITEA_ACCESS_TOKEN)
     log_step "2/5" "$MSG_DEPLOY_GITEA"
