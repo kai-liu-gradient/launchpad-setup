@@ -254,7 +254,6 @@ INFRA_EOF
 
   gitea:
     image: gitea/gitea:__IMAGE_VERSION_GITEA__
-    user: "1000:1000"
     restart: unless-stopped
     environment:
       - GITEA__database__DB_TYPE=postgres
@@ -265,10 +264,12 @@ INFRA_EOF
       - GITEA__server__ROOT_URL=__GITEA_ROOT_URL__
       - GITEA__server__SSH_PORT=2222
       - GITEA__server__SSH_LISTEN_PORT=2222
+      - GITEA__server__START_SSH_SERVER=true
       - GITEA__server__DISABLE_REGISTRATION=true
       - GITEA__service__DISABLE_REGISTRATION=true
     volumes:
-      - gitea-data:/data
+      - gitea-data:/var/lib/gitea
+      - gitea-config:/etc/gitea
     ports:
       - "2222:2222"
     networks:
@@ -345,6 +346,7 @@ volumes:
   gateway-data:
   gateway-logs:
   gitea-data:
+  gitea-config:
 NET_EOF
 
 }
