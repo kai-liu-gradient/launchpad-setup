@@ -46,6 +46,7 @@ IMAGE_VERSION_GITEA=1.21
 
 ```
 generated/
+.secrets
 ```
 
 - [ ] **步骤 4：提交**
@@ -311,6 +312,9 @@ MSG_ADV_AI="AI services"
 MSG_ADV_AI_DESC="CRS2 / PayGO credential config"
 MSG_ADV_NOTIFY="Notifications"
 MSG_ADV_NOTIFY_DESC="Telegram Bot"
+MSG_ADV_STORAGE="File storage"
+MSG_ADV_STORAGE_DESC="Local, S3, or Azure Blob storage"
+MSG_STORAGE_PROVIDER="Storage provider"
 MSG_ADV_PERF="Performance tuning"
 MSG_ADV_PERF_DESC="API replicas, connection pool, timeouts"
 MSG_ADV_ALL="Configure all"
@@ -476,6 +480,9 @@ MSG_ADV_AI="AI 服务"
 MSG_ADV_AI_DESC="CRS2 / PayGO 凭证配置"
 MSG_ADV_NOTIFY="通知"
 MSG_ADV_NOTIFY_DESC="Telegram Bot"
+MSG_ADV_STORAGE="文件存储"
+MSG_ADV_STORAGE_DESC="本地、S3 或 Azure Blob 存储"
+MSG_STORAGE_PROVIDER="存储方式"
 MSG_ADV_PERF="性能调优"
 MSG_ADV_PERF_DESC="API 副本数、连接池、超时时间"
 MSG_ADV_ALL="配置全部"
@@ -644,9 +651,12 @@ case "$ACTION" in
         fi
 
         # Phase 4: Generate
-        generate_secrets
+        if ! load_secrets; then
+            generate_secrets
+        fi
         render_templates
         save_config
+        save_secrets
 
         # Phase 5: Deploy
         setup_kubernetes
@@ -750,6 +760,14 @@ check_environment() {
         ((errors++))
     else
         log_ok "$MSG_DETECT_DOCKER: $(docker --version | awk '{print $3}' | tr -d ',')"
+    fi
+
+    # jq (required by register.sh)
+    if ! command -v jq &>/dev/null; then
+        log_error "jq is not installed (required for cluster registration)"
+        ((errors++))
+    else
+        log_ok "jq: $(jq --version)"
     fi
 
     # Docker Compose v2
@@ -879,7 +897,7 @@ generate_secrets() {
 
     # Gateway
     ANI_CODE_GATEWAY_API_KEY=$(openssl rand -hex 16)
-    LAUNCHPAD_INTERNAL_SECRET=$(openssl rand -hex 16)
+    LAUNCHPAD_INTERNAL_SECRET=$(openssl rand -hex 32)
 
     # Admin password (if not already set by user)
     if [[ -z "${ADMIN_PASSWORD:-}" ]]; then
@@ -888,6 +906,46 @@ generate_secrets() {
     fi
 
     log_ok "Secrets generated"
+}
+
+# Save generated secrets to a separate file (not in .setup.conf for security separation)
+save_secrets() {
+    local secrets_file="${DEPLOY_DIR}/generated/.secrets"
+    chmod 600 "$secrets_file" 2>/dev/null || true
+    cat > "$secrets_file" <<SECRETS
+# Auto-generated secrets — DO NOT COMMIT TO VERSION CONTROL
+JWT_SECRET="${JWT_SECRET}"
+JWT_REFRESH_SECRET="${JWT_REFRESH_SECRET}"
+SESSION_SECRET="${SESSION_SECRET}"
+ENCRYPTION_KEY="${ENCRYPTION_KEY}"
+CLAUDE_CREDENTIALS_ENCRYPTION_KEY="${CLAUDE_CREDENTIALS_ENCRYPTION_KEY}"
+SSH_KEY_ENCRYPTION_SECRET="${SSH_KEY_ENCRYPTION_SECRET}"
+ZT_PRIVATE_KEY="${ZT_PRIVATE_KEY}"
+ZT_PUBLIC_KEY="${ZT_PUBLIC_KEY}"
+DB_PASSWORD_MAIN="${DB_PASSWORD_MAIN}"
+DB_PASSWORD_MONITORING="${DB_PASSWORD_MONITORING}"
+DB_PASSWORD_EVENTS="${DB_PASSWORD_EVENTS}"
+DB_PASSWORD_BILLING="${DB_PASSWORD_BILLING}"
+DB_PASSWORD_STATS="${DB_PASSWORD_STATS}"
+DB_PASSWORD_GATEWAY="${DB_PASSWORD_GATEWAY}"
+GITEA_DB_PASSWORD="${GITEA_DB_PASSWORD}"
+POSTGRES_SUPERUSER_PASSWORD="${POSTGRES_SUPERUSER_PASSWORD}"
+REDIS_PASSWORD="${REDIS_PASSWORD}"
+ANI_CODE_GATEWAY_API_KEY="${ANI_CODE_GATEWAY_API_KEY}"
+LAUNCHPAD_INTERNAL_SECRET="${LAUNCHPAD_INTERNAL_SECRET}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD}"
+SECRETS
+    chmod 600 "$secrets_file"
+}
+
+# Load previously generated secrets (for --resume, --upgrade, --reconfigure)
+load_secrets() {
+    local secrets_file="${DEPLOY_DIR}/generated/.secrets"
+    if [[ -f "$secrets_file" ]]; then
+        source "$secrets_file"
+        return 0
+    fi
+    return 1
 }
 ```
 
@@ -1051,13 +1109,14 @@ collect_advanced_config() {
     echo "    4) $MSG_ADV_SSO - $MSG_ADV_SSO_DESC"
     echo "    5) $MSG_ADV_AI - $MSG_ADV_AI_DESC"
     echo "    6) $MSG_ADV_NOTIFY - $MSG_ADV_NOTIFY_DESC"
-    echo "    7) $MSG_ADV_PERF - $MSG_ADV_PERF_DESC"
-    echo "    8) $MSG_ADV_ALL"
+    echo "    7) $MSG_ADV_STORAGE - $MSG_ADV_STORAGE_DESC"
+    echo "    8) $MSG_ADV_PERF - $MSG_ADV_PERF_DESC"
+    echo "    9) $MSG_ADV_ALL"
     local selected
     selected=$(ask_multichoice "$MSG_ADV_SELECT")
 
     # Parse selection — use comma-delimited word-boundary matching
-    [[ "$selected" == "8" ]] && selected="1,2,3,4,5,6,7"
+    [[ "$selected" == "9" ]] && selected="1,2,3,4,5,6,7,8"
     # Convert to comma-delimited with leading/trailing commas for safe matching
     local sel=",${selected//[[:space:]]/},"
 
@@ -1123,8 +1182,28 @@ collect_advanced_config() {
         log_ok "$MSG_ADV_CONFIGURED"
     fi
 
-    # Module 7: Performance
+    # Module 7: Storage
     if [[ "$sel" == *",7,"* ]]; then
+        echo ""
+        echo "  ── $MSG_ADV_STORAGE ──"
+        STORAGE_PROVIDER=$(ask_choice "$MSG_STORAGE_PROVIDER" "1" "local" "s3" "azure")
+        case "$STORAGE_PROVIDER" in
+            2) STORAGE_PROVIDER="s3"
+               S3_ENDPOINT=$(ask_default "S3 Endpoint" "${S3_ENDPOINT:-}")
+               S3_BUCKET=$(ask_default "S3 Bucket" "${S3_BUCKET:-}")
+               S3_ACCESS_KEY=$(ask_default "S3 Access Key" "${S3_ACCESS_KEY:-}")
+               S3_SECRET_KEY=$(ask_password "S3 Secret Key")
+               ;;
+            3) STORAGE_PROVIDER="azure"
+               AZURE_CONTAINER_SAS_URL=$(ask_default "Azure Container SAS URL" "${AZURE_CONTAINER_SAS_URL:-}")
+               ;;
+            *) STORAGE_PROVIDER="local" ;;
+        esac
+        log_ok "$MSG_ADV_CONFIGURED"
+    fi
+
+    # Module 8: Performance
+    if [[ "$sel" == *",8,"* ]]; then
         echo ""
         echo "  ── $MSG_ADV_PERF ──"
         API_REPLICAS=$(ask_default "API replicas" "${API_REPLICAS:-1}")
@@ -1179,6 +1258,7 @@ SSL_KEY_PATH="${SSL_KEY_PATH:-}"
 SSL_WILDCARD_CERT_PATH="${SSL_WILDCARD_CERT_PATH:-}"
 SSL_WILDCARD_KEY_PATH="${SSL_WILDCARD_KEY_PATH:-}"
 DNS_PROVIDER="${DNS_PROVIDER:-}"
+DNS_API_TOKEN="${DNS_API_TOKEN:-}"
 DB_MODE="${DB_MODE}"
 DATABASE_URL="${DATABASE_URL:-}"
 MONITORING_DATABASE_URL="${MONITORING_DATABASE_URL:-}"
@@ -1199,15 +1279,22 @@ ADMIN_EMAIL="${ADMIN_EMAIL}"
 SMTP_HOST="${SMTP_HOST:-}"
 SMTP_PORT="${SMTP_PORT:-}"
 SMTP_USER="${SMTP_USER:-}"
+SMTP_PASS="${SMTP_PASS:-}"
 EMAIL_FROM="${EMAIL_FROM:-}"
 STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-}"
 STRIPE_PUBLISHABLE_KEY="${STRIPE_PUBLISHABLE_KEY:-}"
 ENTRA_ENABLED="${ENTRA_ENABLED:-false}"
 ENTRA_CLIENT_ID="${ENTRA_CLIENT_ID:-}"
+ENTRA_CLIENT_SECRET="${ENTRA_CLIENT_SECRET:-}"
 ENTRA_TENANT_ID="${ENTRA_TENANT_ID:-}"
 CRS2_API_URL="${CRS2_API_URL:-}"
 CRS2_API_KEY="${CRS2_API_KEY:-}"
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+STORAGE_PROVIDER="${STORAGE_PROVIDER:-local}"
+S3_ENDPOINT="${S3_ENDPOINT:-}"
+S3_BUCKET="${S3_BUCKET:-}"
+S3_ACCESS_KEY="${S3_ACCESS_KEY:-}"
+AZURE_CONTAINER_SAS_URL="${AZURE_CONTAINER_SAS_URL:-}"
 API_REPLICAS="${API_REPLICAS:-1}"
 DB_CONNECTION_LIMIT="${DB_CONNECTION_LIMIT:-10}"
 CONF
@@ -1497,10 +1584,20 @@ INFRA_EOF
     image: __IMAGE_REGISTRY__/launchpad-api:__IMAGE_VERSION_API__
     restart: unless-stopped
     env_file: ./launchpad/.env
+    environment:
+      - NODE_ENV=production
+      - USE_REDIS=true
+      - MULTI_INSTANCE=true
+      - KUBERNETES_ENABLED=true
+      - ANI_CODE_GATEWAY_ENABLED=true
+      - GRACEFUL_SHUTDOWN_TIMEOUT_MS=30000
+    stop_grace_period: 2m
+    stop_signal: SIGTERM
     volumes:
       - ./launchpad/config/settings.yml:/app/config/settings.yml:ro
       - api-logs:/app/logs
       - api-data:/app/data
+      - __KUBECONFIG_PATH__:/home/nodejs/.kube/config:ro
     networks:
       - launchpad-network
     healthcheck:
@@ -1514,6 +1611,9 @@ INFRA_EOF
     image: __IMAGE_REGISTRY__/launchpad-ui:__IMAGE_VERSION_UI__
     restart: unless-stopped
     env_file: ./launchpad/.env
+    environment:
+      - UI_PORT=6801
+      - API_URL=http://api:6802
     networks:
       - launchpad-network
     healthcheck:
@@ -1526,6 +1626,16 @@ INFRA_EOF
     image: __IMAGE_REGISTRY__/launchpad-router:__IMAGE_VERSION_ROUTER__
     restart: unless-stopped
     env_file: ./launchpad/.env
+    environment:
+      - WORKER_PORT=6580
+      - WORKER_HOST=0.0.0.0
+      - LAUNCHPAD_API_URL=http://api:6802/api/v1/public
+      - LAUNCHPAD_DASHBOARD_URL=__EXTERNAL_DOMAIN__
+      - BASE_DOMAIN=__BASE_DOMAIN__
+      - DEFAULT_BACKEND=__DEFAULT_BACKEND__
+      - ZT_PUBLIC_KEY=__ZT_PUBLIC_KEY__
+    depends_on:
+      - api
     networks:
       - launchpad-network
     healthcheck:
@@ -1538,7 +1648,19 @@ INFRA_EOF
     image: __IMAGE_REGISTRY__/launchpad-api:__IMAGE_VERSION_API__
     restart: unless-stopped
     env_file: ./launchpad/.env
-    command: ["node", "scripts/cron.js"]
+    user: root
+    command: >
+      sh -c "cp /app/pd/deploy/crontab /etc/crontabs/root
+      && chown root:root /etc/crontabs/root
+      && crond -f -l 0"
+    cap_add:
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:false
+    volumes:
+      - cron-logs:/var/log/cron
     networks:
       - launchpad-network
 
@@ -1546,7 +1668,9 @@ INFRA_EOF
     image: __IMAGE_REGISTRY__/launchpad-api:__IMAGE_VERSION_API__
     restart: unless-stopped
     env_file: ./launchpad/.env
-    command: ["node", "scripts/backup-worker.js"]
+    command: ["node", "src/workers/backupWorker.js"]
+    volumes:
+      - worker-logs:/app/logs
     networks:
       - launchpad-network
 
@@ -1631,6 +1755,11 @@ SERVICES_EOF
         -e "s|__GITEA_ROOT_URL__|${GITEA_ROOT_URL}|g" \
         -e "s|__REDIS_PASSWORD__|${REDIS_PASSWORD}|g" \
         -e "s|__POSTGRES_SUPERUSER_PASSWORD__|${POSTGRES_SUPERUSER_PASSWORD}|g" \
+        -e "s|__KUBECONFIG_PATH__|${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}|g" \
+        -e "s|__EXTERNAL_DOMAIN__|${EXTERNAL_DOMAIN}|g" \
+        -e "s|__BASE_DOMAIN__|${BASE_DOMAIN}|g" \
+        -e "s|__DEFAULT_BACKEND__|${DEFAULT_BACKEND}|g" \
+        -e "s|__ZT_PUBLIC_KEY__|${ZT_PUBLIC_KEY}|g" \
         "$compose_file"
 
     # Networks and volumes
@@ -1645,6 +1774,8 @@ volumes:
   redis-data:
   api-logs:
   api-data:
+  cron-logs:
+  worker-logs:
   gateway-data:
   gateway-logs:
   gitea-data:
@@ -1899,9 +2030,18 @@ register_cluster() {
     fi
     chmod +x "$register_script"
 
-    # register.sh runs on the host, so use localhost (API port 6802 is exposed via Nginx on 443,
-    # but we can also use docker port mapping). Use the public HTTPS URL for registration.
+    # register.sh runs on the host. Try public HTTPS URL first; if DNS not yet configured,
+    # fall back to localhost via Nginx (which is listening on 443 on the host).
+    local internal_ip
+    internal_ip=$(detect_internal_ip 2>/dev/null || echo "127.0.0.1")
     local reg_url="https://${LAUNCHPAD_DOMAIN}/admin/adminapi/k3s/register"
+
+    # Test if the public URL is reachable; if not, use IP with Host header via --resolve
+    if ! curl -sf --max-time 5 "https://${LAUNCHPAD_DOMAIN}" -o /dev/null 2>/dev/null; then
+        log_warn "Public URL not reachable (DNS may not be configured). Using IP with SNI."
+        reg_url="https://${internal_ip}/admin/adminapi/k3s/register"
+        export CURL_EXTRA_ARGS="--resolve ${LAUNCHPAD_DOMAIN}:443:${internal_ip} -k"
+    fi
 
     if [[ "$K8S_MODE" == "builtin" ]]; then
         LAUNCHPAD_REGISTRATION_URL="$reg_url" \
@@ -2009,6 +2149,11 @@ DO \$\$ BEGIN
     END IF;
 END \$\$;
 GRANT ALL PRIVILEGES ON DATABASE gitea TO gitea;
+ALTER DATABASE gitea OWNER TO gitea;
+SQL
+    # Grant schema-level permissions within gitea database
+    docker compose -f "$compose_file" exec -T postgres psql -U postgres -d gitea <<SQL
+GRANT ALL ON SCHEMA public TO gitea;
 SQL
     log_ok "Gitea database"
 
@@ -2234,11 +2379,13 @@ show_status() {
 
 upgrade_services() {
     local compose_file="${DEPLOY_DIR}/generated/docker-compose.yml"
-    # Reload versions and saved config, then re-render compose to pick up new image tags
-    source "${DEPLOY_DIR}/versions.conf"
-    source "${DEPLOY_DIR}/generated/.setup.conf"
+    # Reload versions, saved config, and secrets, then re-render compose
+    source "${DEPLOY_DIR}/scripts/lib/common.sh"
     source "${DEPLOY_DIR}/scripts/lib/render.sh"
     source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
+    source "${DEPLOY_DIR}/versions.conf"
+    source "${DEPLOY_DIR}/generated/.setup.conf"
+    load_secrets
     render_compose
     log_info "Pulling latest images..."
     docker compose -f "$compose_file" pull
@@ -2266,11 +2413,15 @@ resume_deploy() {
         exit 1
     fi
 
-    # Load saved config and all modules
-    source "${DEPLOY_DIR}/generated/.setup.conf"
+    # Load saved config, secrets, and all modules
     source "${DEPLOY_DIR}/scripts/lib/common.sh"
+    source "${DEPLOY_DIR}/scripts/lib/detect.sh"
+    source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
+    source "${DEPLOY_DIR}/scripts/lib/render.sh"
     source "${DEPLOY_DIR}/scripts/lib/database.sh"
     source "${DEPLOY_DIR}/scripts/lib/k3s.sh"
+    source "${DEPLOY_DIR}/generated/.setup.conf"
+    load_secrets || { log_error "Cannot load secrets. Run ./deploy/setup.sh to redeploy."; exit 1; }
 
     log_info "Checking deployment state and resuming from failed phase..."
 
