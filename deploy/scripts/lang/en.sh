@@ -67,7 +67,7 @@ MSG_K8S_CONTEXT="K8s Context name (leave empty for current)"
 MSG_K8S_INGRESS="Ingress backend domain"
 MSG_K8S_STORAGE_CLASS="Storage Class"
 MSG_K8S_VERIFIED="Cluster connection verified"
-MSG_K8S_MACOS_WARN="macOS detected: k3s not available, using external K8s mode (Colima/Docker Desktop/kind)"
+MSG_K8S_MACOS_WARN="macOS detected: ensure k3s is installed if using built-in mode"
 
 # Advanced
 MSG_ADV_ENTER="Enter advanced configuration?"

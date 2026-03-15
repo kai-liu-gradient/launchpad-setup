@@ -86,11 +86,6 @@ check_environment() {
         log_ok "$MSG_DETECT_PORTS: all available"
     fi
 
-    # macOS-specific notes
-    if [[ "$PLATFORM" == "Darwin" ]]; then
-        log_warn "macOS detected: k3s not available, use external K8s (Colima/Docker Desktop/kind)"
-    fi
-
     if [[ "$errors" -gt 0 ]]; then
         log_error "$MSG_DETECT_FAIL"
         exit 1

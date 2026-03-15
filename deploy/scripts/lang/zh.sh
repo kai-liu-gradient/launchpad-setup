@@ -67,7 +67,7 @@ MSG_K8S_CONTEXT="K8s Context 名称（留空使用当前）"
 MSG_K8S_INGRESS="Ingress 后端域名"
 MSG_K8S_STORAGE_CLASS="Storage Class"
 MSG_K8S_VERIFIED="集群连接已验证"
-MSG_K8S_MACOS_WARN="检测到 macOS：k3s 不可用，已切换为外部 K8s 模式（Colima/Docker Desktop/kind）"
+MSG_K8S_MACOS_WARN="检测到 macOS：如使用内置 k3s，请确保已安装"
 
 # Advanced
 MSG_ADV_ENTER="是否进入高级配置？"

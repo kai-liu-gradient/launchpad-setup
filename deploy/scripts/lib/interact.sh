@@ -57,10 +57,10 @@ collect_basic_config() {
             ;;
         3)  # Custom cert files
             SSL_MODE="custom"
-            SSL_CERT_PATH=$(ask_default "$MSG_SSL_CERT_PATH" "")
-            SSL_KEY_PATH=$(ask_default "$MSG_SSL_KEY_PATH" "")
-            SSL_WILDCARD_CERT_PATH=$(ask_default "Wildcard $MSG_SSL_CERT_PATH" "")
-            SSL_WILDCARD_KEY_PATH=$(ask_default "Wildcard $MSG_SSL_KEY_PATH" "")
+            SSL_CERT_PATH=$(ask_filepath "$MSG_SSL_CERT_PATH" "")
+            SSL_KEY_PATH=$(ask_filepath "$MSG_SSL_KEY_PATH" "")
+            SSL_WILDCARD_CERT_PATH=$(ask_filepath "Wildcard $MSG_SSL_CERT_PATH" "")
+            SSL_WILDCARD_KEY_PATH=$(ask_filepath "Wildcard $MSG_SSL_KEY_PATH" "")
             ;;
     esac
 
@@ -95,17 +95,11 @@ collect_basic_config() {
     # Step 4: K8s
     log_step "4/6" "$MSG_STEP_K8S"
 
-    if [[ "$PLATFORM" == "Darwin" ]]; then
-        # macOS: k3s not available, default to external
-        log_warn "$MSG_K8S_MACOS_WARN"
-        K8S_MODE="external"
-    else
-        K8S_MODE=$(ask_choice "$MSG_K8S_MODE" "1" "$MSG_K8S_BUILTIN" "$MSG_K8S_EXTERNAL")
-    fi
+    K8S_MODE=$(ask_choice "$MSG_K8S_MODE" "1" "$MSG_K8S_BUILTIN" "$MSG_K8S_EXTERNAL")
 
     if [[ "$K8S_MODE" == "2" || "$K8S_MODE" == "external" ]]; then
         K8S_MODE="external"
-        K8S_KUBECONFIG_PATH=$(ask_default "$MSG_K8S_KUBECONFIG" "${K8S_KUBECONFIG_PATH:-~/.kube/config}")
+        K8S_KUBECONFIG_PATH=$(ask_filepath "$MSG_K8S_KUBECONFIG" "${K8S_KUBECONFIG_PATH:-~/.kube/config}")
         K8S_CONTEXT=$(ask_default "$MSG_K8S_CONTEXT" "")
         K8S_INGRESS_DOMAIN=$(ask_default "$MSG_K8S_INGRESS" "")
         STORAGE_CLASS=$(ask_default "$MSG_K8S_STORAGE_CLASS" "${STORAGE_CLASS:-standard}")

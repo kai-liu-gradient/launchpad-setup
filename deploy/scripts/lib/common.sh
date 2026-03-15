@@ -169,6 +169,32 @@ validate_file_exists() {
     [[ -f "$1" ]]
 }
 
+# Expand ~ to $HOME in paths (bash doesn't expand ~ inside quotes)
+expand_path() {
+    local p="$1"
+    if [[ "$p" == "~/"* ]]; then
+        p="${HOME}/${p#\~/}"
+    elif [[ "$p" == "~" ]]; then
+        p="$HOME"
+    fi
+    echo "$p"
+}
+
+# ask_filepath PROMPT DEFAULT — like ask_default but expands ~ in the result
+ask_filepath() {
+    local prompt="$1" default="$2" value
+    if [[ -n "$default" ]]; then
+        printf "  ${CYAN}◆${NC} %s ${DIM}(%s)${NC}: " "$prompt" "$default" >/dev/tty
+    else
+        printf "  ${CYAN}◆${NC} %s: " "$prompt" >/dev/tty
+    fi
+    read -r value </dev/tty
+    value="${value:-$default}"
+    value="$(expand_path "$value")"
+    printf "\033[1A\r\033[K  ${GREEN}◇${NC} %s ${DIM}·${NC} %s\n" "$prompt" "$value" >/dev/tty
+    echo "$value"
+}
+
 # ─── Utilities ─────────────────────────────────────────────────────────
 
 # Cross-platform sed -i (GNU vs BSD)
