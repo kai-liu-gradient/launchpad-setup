@@ -120,15 +120,17 @@ collect_advanced_config() {
         return
     fi
 
-    echo "    1) $MSG_ADV_ADMIN - $MSG_ADV_ADMIN_DESC"
-    echo "    2) $MSG_ADV_SMTP - $MSG_ADV_SMTP_DESC"
-    echo "    3) $MSG_ADV_STRIPE - $MSG_ADV_STRIPE_DESC"
-    echo "    4) $MSG_ADV_SSO - $MSG_ADV_SSO_DESC"
-    echo "    5) $MSG_ADV_AI - $MSG_ADV_AI_DESC"
-    echo "    6) $MSG_ADV_NOTIFY - $MSG_ADV_NOTIFY_DESC"
-    echo "    7) $MSG_ADV_STORAGE - $MSG_ADV_STORAGE_DESC"
-    echo "    8) $MSG_ADV_PERF - $MSG_ADV_PERF_DESC"
-    echo "    9) $MSG_ADV_ALL"
+    echo ""
+    echo -e "    ${DIM}1)${NC} $MSG_ADV_ADMIN ${DIM}- $MSG_ADV_ADMIN_DESC${NC}"
+    echo -e "    ${DIM}2)${NC} $MSG_ADV_SMTP ${DIM}- $MSG_ADV_SMTP_DESC${NC}"
+    echo -e "    ${DIM}3)${NC} $MSG_ADV_STRIPE ${DIM}- $MSG_ADV_STRIPE_DESC${NC}"
+    echo -e "    ${DIM}4)${NC} $MSG_ADV_SSO ${DIM}- $MSG_ADV_SSO_DESC${NC}"
+    echo -e "    ${DIM}5)${NC} $MSG_ADV_AI ${DIM}- $MSG_ADV_AI_DESC${NC}"
+    echo -e "    ${DIM}6)${NC} $MSG_ADV_NOTIFY ${DIM}- $MSG_ADV_NOTIFY_DESC${NC}"
+    echo -e "    ${DIM}7)${NC} $MSG_ADV_STORAGE ${DIM}- $MSG_ADV_STORAGE_DESC${NC}"
+    echo -e "    ${DIM}8)${NC} $MSG_ADV_PERF ${DIM}- $MSG_ADV_PERF_DESC${NC}"
+    echo -e "    ${DIM}9)${NC} ${BOLD}$MSG_ADV_ALL${NC}"
+    echo ""
     local selected
     selected=$(ask_multichoice "$MSG_ADV_SELECT")
 
