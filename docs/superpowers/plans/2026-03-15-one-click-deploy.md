@@ -272,6 +272,14 @@ MSG_SSL_KEY_PATH="Private key file path (.key)"
 MSG_DB_MODE="Database mode"
 MSG_DB_BUILTIN="Built-in PostgreSQL + Redis (recommended)"
 MSG_DB_EXTERNAL="Use external database"
+MSG_DB_EXT_HINT="Provide full PostgreSQL connection URLs for each schema (format: postgresql://user:pass@host:port/db?schema=name)"
+MSG_DB_URL_MAIN="Main DB URL (launchpad_main schema)"
+MSG_DB_URL_MONITORING="Monitoring DB URL (launchpad_monitoring schema)"
+MSG_DB_URL_EVENTS="Events DB URL (launchpad_events schema)"
+MSG_DB_URL_BILLING="Billing DB URL (launchpad_billing schema)"
+MSG_DB_URL_STATS="Stats DB URL (launchpad_stats schema)"
+MSG_DB_URL_GATEWAY="Gateway DB URL (launchpad_gateway schema)"
+MSG_DB_URL_GITEA="Gitea DB URL (e.g. postgresql://gitea:pass@host:5432/gitea)"
 MSG_DB_HOST="PostgreSQL host"
 MSG_DB_PORT="PostgreSQL port"
 MSG_DB_REDIS_HOST="Redis host"
@@ -429,6 +437,14 @@ MSG_SSL_KEY_PATH="私钥文件路径 (.key)"
 MSG_DB_MODE="数据库模式"
 MSG_DB_BUILTIN="内置 PostgreSQL + Redis（推荐）"
 MSG_DB_EXTERNAL="使用外部数据库"
+MSG_DB_EXT_HINT="请提供各 schema 的完整 PostgreSQL 连接 URL（格式：postgresql://user:pass@host:port/db?schema=name）"
+MSG_DB_URL_MAIN="主库 URL（launchpad_main schema）"
+MSG_DB_URL_MONITORING="监控库 URL（launchpad_monitoring schema）"
+MSG_DB_URL_EVENTS="事件库 URL（launchpad_events schema）"
+MSG_DB_URL_BILLING="计费库 URL（launchpad_billing schema）"
+MSG_DB_URL_STATS="统计库 URL（launchpad_stats schema）"
+MSG_DB_URL_GATEWAY="网关库 URL（launchpad_gateway schema）"
+MSG_DB_URL_GITEA="Gitea 库 URL（例：postgresql://gitea:pass@host:5432/gitea）"
 MSG_DB_HOST="PostgreSQL 主机"
 MSG_DB_PORT="PostgreSQL 端口"
 MSG_DB_REDIS_HOST="Redis 主机"
@@ -980,8 +996,17 @@ collect_basic_config() {
 
     if [[ "$DB_MODE" == "2" ]]; then
         DB_MODE="external"
-        DB_HOST=$(ask_default "$MSG_DB_HOST" "${DB_HOST:-}")
-        DB_PORT=$(ask_default "$MSG_DB_PORT" "${DB_PORT:-5432}")
+        echo ""
+        echo "  $MSG_DB_EXT_HINT"
+        echo ""
+        DATABASE_URL=$(ask_default "$MSG_DB_URL_MAIN" "${DATABASE_URL:-}")
+        MONITORING_DATABASE_URL=$(ask_default "$MSG_DB_URL_MONITORING" "${MONITORING_DATABASE_URL:-}")
+        EVENTS_DATABASE_URL=$(ask_default "$MSG_DB_URL_EVENTS" "${EVENTS_DATABASE_URL:-}")
+        BILLING_DATABASE_URL=$(ask_default "$MSG_DB_URL_BILLING" "${BILLING_DATABASE_URL:-}")
+        STATS_DATABASE_URL=$(ask_default "$MSG_DB_URL_STATS" "${STATS_DATABASE_URL:-}")
+        GATEWAY_DATABASE_URL=$(ask_default "$MSG_DB_URL_GATEWAY" "${GATEWAY_DATABASE_URL:-}")
+        GITEA_DATABASE_URL=$(ask_default "$MSG_DB_URL_GITEA" "${GITEA_DATABASE_URL:-}")
+        echo ""
         REDIS_HOST=$(ask_default "$MSG_DB_REDIS_HOST" "${REDIS_HOST:-}")
         REDIS_PORT=$(ask_default "$MSG_DB_REDIS_PORT" "${REDIS_PORT:-6379}")
         REDIS_PASSWORD=$(ask_default "$MSG_DB_REDIS_PASSWORD" "")
@@ -1155,10 +1180,15 @@ SSL_WILDCARD_CERT_PATH="${SSL_WILDCARD_CERT_PATH:-}"
 SSL_WILDCARD_KEY_PATH="${SSL_WILDCARD_KEY_PATH:-}"
 DNS_PROVIDER="${DNS_PROVIDER:-}"
 DB_MODE="${DB_MODE}"
-DB_HOST="${DB_HOST}"
-DB_PORT="${DB_PORT}"
-REDIS_HOST="${REDIS_HOST}"
-REDIS_PORT="${REDIS_PORT}"
+DATABASE_URL="${DATABASE_URL:-}"
+MONITORING_DATABASE_URL="${MONITORING_DATABASE_URL:-}"
+EVENTS_DATABASE_URL="${EVENTS_DATABASE_URL:-}"
+BILLING_DATABASE_URL="${BILLING_DATABASE_URL:-}"
+STATS_DATABASE_URL="${STATS_DATABASE_URL:-}"
+GATEWAY_DATABASE_URL="${GATEWAY_DATABASE_URL:-}"
+GITEA_DATABASE_URL="${GITEA_DATABASE_URL:-}"
+REDIS_HOST="${REDIS_HOST:-}"
+REDIS_PORT="${REDIS_PORT:-}"
 K8S_MODE="${K8S_MODE}"
 K8S_KUBECONFIG_PATH="${K8S_KUBECONFIG_PATH:-}"
 K8S_CONTEXT="${K8S_CONTEXT:-}"
@@ -1362,15 +1392,33 @@ render_templates() {
         export BILLING_DATABASE_URL="postgresql://launchpad_billinguser:${DB_PASSWORD_BILLING}@postgres:5432/launchpad?schema=launchpad_billing"
         export STATS_DATABASE_URL="postgresql://launchpad_statsuser:${DB_PASSWORD_STATS}@postgres:5432/launchpad?schema=launchpad_stats"
         export GATEWAY_DATABASE_URL="postgresql://launchpad_gatewayuser:${DB_PASSWORD_GATEWAY}@postgres:5432/launchpad?schema=launchpad_gateway"
+    else
+        # External mode: user provided full DATABASE_URLs during interaction
+        export DATABASE_URL MONITORING_DATABASE_URL EVENTS_DATABASE_URL
+        export BILLING_DATABASE_URL STATS_DATABASE_URL GATEWAY_DATABASE_URL
+
+        # Parse Gitea DB URL into individual fields for Gitea env vars
+        # Format: postgresql://user:pass@host:port/dbname
+        if [[ -n "${GITEA_DATABASE_URL:-}" ]]; then
+            local gitea_url_body="${GITEA_DATABASE_URL#postgresql://}"
+            GITEA_DB_USER="${gitea_url_body%%:*}"
+            local rest="${gitea_url_body#*:}"
+            GITEA_DB_PASSWORD="${rest%%@*}"
+            rest="${rest#*@}"
+            GITEA_DB_HOST="${rest%%:*}"
+            rest="${rest#*:}"
+            GITEA_DB_PORT="${rest%%/*}"
+            GITEA_DB_NAME="${rest#*/}"
+            GITEA_DB_NAME="${GITEA_DB_NAME%%\?*}"
+        fi
     fi
-    # External mode: user provides DATABASE_URL etc. directly
 
     # Export all variables for envsubst
     export DOMAIN SUBDOMAIN LAUNCHPAD_DOMAIN GITEA_DOMAIN
     export JWT_SECRET JWT_REFRESH_SECRET SESSION_SECRET
     export ENCRYPTION_KEY CLAUDE_CREDENTIALS_ENCRYPTION_KEY SSH_KEY_ENCRYPTION_SECRET
     export ZT_PRIVATE_KEY ZT_PUBLIC_KEY
-    export DB_HOST DB_PORT REDIS_HOST REDIS_PORT REDIS_PASSWORD
+    export REDIS_HOST REDIS_PORT REDIS_PASSWORD
     export DEFAULT_BACKEND STORAGE_CLASS
     export ANI_CODE_GATEWAY_API_KEY LAUNCHPAD_INTERNAL_SECRET
     export ADMIN_EMAIL IMAGE_REGISTRY
@@ -1523,9 +1571,9 @@ INFRA_EOF
     restart: unless-stopped
     environment:
       - GITEA__database__DB_TYPE=postgres
-      - GITEA__database__HOST=__DB_HOST__:__DB_PORT__
-      - GITEA__database__NAME=gitea
-      - GITEA__database__USER=gitea
+      - GITEA__database__HOST=__GITEA_DB_HOST__:__GITEA_DB_PORT__
+      - GITEA__database__NAME=__GITEA_DB_NAME__
+      - GITEA__database__USER=__GITEA_DB_USER__
       - GITEA__database__PASSWD=__GITEA_DB_PASSWORD__
       - GITEA__server__ROOT_URL=__GITEA_ROOT_URL__
       - GITEA__server__SSH_PORT=2222
@@ -1576,8 +1624,10 @@ SERVICES_EOF
         -e "s|__IMAGE_VERSION_ROUTER__|${IMAGE_VERSION_ROUTER}|g" \
         -e "s|__IMAGE_VERSION_GATEWAY__|${IMAGE_VERSION_GATEWAY}|g" \
         -e "s|__IMAGE_VERSION_GITEA__|${IMAGE_VERSION_GITEA}|g" \
-        -e "s|__DB_HOST__|${DB_HOST}|g" \
-        -e "s|__DB_PORT__|${DB_PORT}|g" \
+        -e "s|__GITEA_DB_HOST__|${GITEA_DB_HOST:-$DB_HOST}|g" \
+        -e "s|__GITEA_DB_PORT__|${GITEA_DB_PORT:-$DB_PORT}|g" \
+        -e "s|__GITEA_DB_NAME__|${GITEA_DB_NAME:-gitea}|g" \
+        -e "s|__GITEA_DB_USER__|${GITEA_DB_USER:-gitea}|g" \
         -e "s|__GITEA_DB_PASSWORD__|${GITEA_DB_PASSWORD}|g" \
         -e "s|__GITEA_ROOT_URL__|${GITEA_ROOT_URL}|g" \
         -e "s|__REDIS_PASSWORD__|${REDIS_PASSWORD}|g" \
