@@ -29,6 +29,7 @@ MSG_VERSION_PROMPT="镜像版本"
 # SSL
 MSG_SSL_METHOD="证书获取方式"
 MSG_SSL_LETSENCRYPT="Let's Encrypt 自动申请（推荐）"
+MSG_SSL_SELFSIGNED="自签名证书（本地测试）"
 MSG_SSL_CUSTOM="提供证书文件"
 MSG_SSL_DNS_PROVIDER="DNS 服务商"
 MSG_SSL_DNS_CLOUDFLARE="Cloudflare"

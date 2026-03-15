@@ -7,11 +7,11 @@ setup_certificates() {
     local cert_dir="${DEPLOY_DIR}/generated/nginx/certs"
     mkdir -p "$cert_dir"
 
-    if [[ "$SSL_MODE" == "letsencrypt" ]]; then
-        setup_letsencrypt
-    else
-        setup_custom_certs
-    fi
+    case "$SSL_MODE" in
+        letsencrypt) setup_letsencrypt ;;
+        selfsigned)  setup_selfsigned_certs ;;
+        custom)      setup_custom_certs ;;
+    esac
 
     log_ok "SSL certificates configured"
 }
@@ -73,6 +73,49 @@ setup_letsencrypt() {
     # Create symlinks for wildcard paths (consistent with custom cert naming)
     ln -sf "${cert_dir}/fullchain.pem" "${cert_dir}/wildcard-fullchain.pem"
     ln -sf "${cert_dir}/privkey.pem" "${cert_dir}/wildcard-privkey.pem"
+}
+
+setup_selfsigned_certs() {
+    local cert_dir="${DEPLOY_DIR}/generated/nginx/certs"
+
+    log_info "Generating self-signed certificate for *.${DOMAIN}..."
+
+    # Generate CA key + cert (so we can add it to trust store if desired)
+    openssl genrsa -out "${cert_dir}/ca.key" 2048 2>/dev/null
+    openssl req -new -x509 -days 3650 -key "${cert_dir}/ca.key" \
+        -out "${cert_dir}/ca.pem" \
+        -subj "/CN=AniLaunchpad Local CA" 2>/dev/null
+
+    # Generate server key
+    openssl genrsa -out "${cert_dir}/privkey.pem" 2048 2>/dev/null
+
+    # Generate CSR with SAN (Subject Alternative Names)
+    local san="DNS:*.${DOMAIN},DNS:${DOMAIN},DNS:${LAUNCHPAD_DOMAIN},DNS:${GITEA_DOMAIN},DNS:localhost,IP:127.0.0.1"
+    openssl req -new -key "${cert_dir}/privkey.pem" \
+        -out "${cert_dir}/server.csr" \
+        -subj "/CN=*.${DOMAIN}" 2>/dev/null
+
+    # Sign with our CA, including SAN extension
+    openssl x509 -req -days 3650 \
+        -in "${cert_dir}/server.csr" \
+        -CA "${cert_dir}/ca.pem" -CAkey "${cert_dir}/ca.key" -CAcreateserial \
+        -out "${cert_dir}/fullchain.pem" \
+        -extfile <(printf "subjectAltName=%s" "$san") 2>/dev/null
+
+    # Wildcard symlinks
+    ln -sf "${cert_dir}/fullchain.pem" "${cert_dir}/wildcard-fullchain.pem"
+    ln -sf "${cert_dir}/privkey.pem" "${cert_dir}/wildcard-privkey.pem"
+
+    # Cleanup temp files
+    rm -f "${cert_dir}/server.csr" "${cert_dir}/ca.srl"
+
+    log_ok "Self-signed certificate generated"
+    log_warn "Browser will show security warning. To trust locally:"
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        log_warn "  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ${cert_dir}/ca.pem"
+    else
+        log_warn "  sudo cp ${cert_dir}/ca.pem /usr/local/share/ca-certificates/anilaunchpad.crt && sudo update-ca-certificates"
+    fi
 }
 
 setup_custom_certs() {

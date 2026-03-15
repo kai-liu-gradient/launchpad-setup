@@ -29,6 +29,7 @@ MSG_VERSION_PROMPT="Image version"
 # SSL
 MSG_SSL_METHOD="Certificate method"
 MSG_SSL_LETSENCRYPT="Let's Encrypt auto-apply (recommended)"
+MSG_SSL_SELFSIGNED="Self-signed certificate (local testing)"
 MSG_SSL_CUSTOM="Provide certificate files"
 MSG_SSL_DNS_PROVIDER="DNS provider"
 MSG_SSL_DNS_CLOUDFLARE="Cloudflare"

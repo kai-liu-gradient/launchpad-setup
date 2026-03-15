@@ -35,28 +35,34 @@ collect_basic_config() {
 
     # Step 2: SSL
     log_step "2/6" "$MSG_STEP_SSL"
-    SSL_MODE=$(ask_choice "$MSG_SSL_METHOD" "1" "$MSG_SSL_LETSENCRYPT" "$MSG_SSL_CUSTOM")
+    SSL_MODE=$(ask_choice "$MSG_SSL_METHOD" "1" "$MSG_SSL_LETSENCRYPT" "$MSG_SSL_SELFSIGNED" "$MSG_SSL_CUSTOM")
 
-    if [[ "$SSL_MODE" == "1" ]]; then
-        SSL_MODE="letsencrypt"
-        DNS_PROVIDER=$(ask_choice "$MSG_SSL_DNS_PROVIDER" "1" \
-            "$MSG_SSL_DNS_CLOUDFLARE" "$MSG_SSL_DNS_ALIYUN" "$MSG_SSL_DNS_AZURE" "$MSG_SSL_DNS_OTHER")
-        case "$DNS_PROVIDER" in
-            1) DNS_PROVIDER="cloudflare" ;;
-            2) DNS_PROVIDER="aliyun" ;;
-            3) DNS_PROVIDER="azure" ;;
-            *) DNS_PROVIDER="manual" ;;
-        esac
-        if [[ "$DNS_PROVIDER" != "manual" ]]; then
-            DNS_API_TOKEN=$(ask_default "$MSG_SSL_API_TOKEN" "")
-        fi
-    else
-        SSL_MODE="custom"
-        SSL_CERT_PATH=$(ask_default "$MSG_SSL_CERT_PATH" "")
-        SSL_KEY_PATH=$(ask_default "$MSG_SSL_KEY_PATH" "")
-        SSL_WILDCARD_CERT_PATH=$(ask_default "Wildcard $MSG_SSL_CERT_PATH" "")
-        SSL_WILDCARD_KEY_PATH=$(ask_default "Wildcard $MSG_SSL_KEY_PATH" "")
-    fi
+    case "$SSL_MODE" in
+        1)  # Let's Encrypt
+            SSL_MODE="letsencrypt"
+            DNS_PROVIDER=$(ask_choice "$MSG_SSL_DNS_PROVIDER" "1" \
+                "$MSG_SSL_DNS_CLOUDFLARE" "$MSG_SSL_DNS_ALIYUN" "$MSG_SSL_DNS_AZURE" "$MSG_SSL_DNS_OTHER")
+            case "$DNS_PROVIDER" in
+                1) DNS_PROVIDER="cloudflare" ;;
+                2) DNS_PROVIDER="aliyun" ;;
+                3) DNS_PROVIDER="azure" ;;
+                *) DNS_PROVIDER="manual" ;;
+            esac
+            if [[ "$DNS_PROVIDER" != "manual" ]]; then
+                DNS_API_TOKEN=$(ask_default "$MSG_SSL_API_TOKEN" "")
+            fi
+            ;;
+        2)  # Self-signed
+            SSL_MODE="selfsigned"
+            ;;
+        3)  # Custom cert files
+            SSL_MODE="custom"
+            SSL_CERT_PATH=$(ask_default "$MSG_SSL_CERT_PATH" "")
+            SSL_KEY_PATH=$(ask_default "$MSG_SSL_KEY_PATH" "")
+            SSL_WILDCARD_CERT_PATH=$(ask_default "Wildcard $MSG_SSL_CERT_PATH" "")
+            SSL_WILDCARD_KEY_PATH=$(ask_default "Wildcard $MSG_SSL_KEY_PATH" "")
+            ;;
+    esac
 
     # Step 3: Database
     log_step "3/6" "$MSG_STEP_DB"
