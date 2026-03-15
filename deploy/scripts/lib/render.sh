@@ -139,6 +139,7 @@ INFRA_EOF
     cat >> "$compose_file" <<'SERVICES_EOF'
   api:
     image: __IMAGE_REGISTRY__/launchpad-api:__IMAGE_VERSION_API__
+    platform: linux/amd64
     restart: unless-stopped
     env_file: ./launchpad/.env
     environment:
@@ -166,6 +167,7 @@ INFRA_EOF
 
   ui:
     image: __IMAGE_REGISTRY__/launchpad-ui:__IMAGE_VERSION_UI__
+    platform: linux/amd64
     restart: unless-stopped
     env_file: ./launchpad/.env
     environment:
@@ -181,6 +183,7 @@ INFRA_EOF
 
   router:
     image: __IMAGE_REGISTRY__/launchpad-router:__IMAGE_VERSION_ROUTER__
+    platform: linux/amd64
     restart: unless-stopped
     env_file: ./launchpad/.env
     environment:
@@ -203,6 +206,7 @@ INFRA_EOF
 
   cron:
     image: __IMAGE_REGISTRY__/launchpad-api:__IMAGE_VERSION_API__
+    platform: linux/amd64
     restart: unless-stopped
     env_file: ./launchpad/.env
     user: root
@@ -223,6 +227,7 @@ INFRA_EOF
 
   backup-worker:
     image: __IMAGE_REGISTRY__/launchpad-api:__IMAGE_VERSION_API__
+    platform: linux/amd64
     restart: unless-stopped
     env_file: ./launchpad/.env
     command: ["node", "src/workers/backupWorker.js"]
@@ -233,6 +238,7 @@ INFRA_EOF
 
   gateway:
     image: __IMAGE_REGISTRY__/ani-code-gateway:__IMAGE_VERSION_GATEWAY__
+    platform: linux/amd64
     restart: unless-stopped
     env_file: ./gateway/.env
     volumes:
