@@ -75,7 +75,7 @@ render_templates() {
     # Render .env files
     envsubst < "${DEPLOY_DIR}/templates/env.template" > "${DEPLOY_DIR}/generated/launchpad/.env"
     envsubst < "${DEPLOY_DIR}/templates/env.gateway.template" > "${DEPLOY_DIR}/generated/gateway/.env"
-    envsubst < "${DEPLOY_DIR}/templates/nginx.conf.template" > "${DEPLOY_DIR}/generated/nginx/nginx.conf"
+    envsubst '${DOMAIN} ${LAUNCHPAD_DOMAIN} ${GITEA_DOMAIN}' < "${DEPLOY_DIR}/templates/nginx.conf.template" > "${DEPLOY_DIR}/generated/nginx/nginx.conf"
     envsubst < "${DEPLOY_DIR}/templates/settings.yml.template" > "${DEPLOY_DIR}/generated/launchpad/config/settings.yml"
 
     # Render docker-compose.yml (conditional logic)
