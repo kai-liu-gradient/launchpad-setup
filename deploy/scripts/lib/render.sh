@@ -261,11 +261,11 @@ INFRA_EOF
       - GITEA__database__NAME=__GITEA_DB_NAME__
       - GITEA__database__USER=__GITEA_DB_USER__
       - GITEA__database__PASSWD=__GITEA_DB_PASSWORD__
+      - GITEA__security__INSTALL_LOCK=true
       - GITEA__server__ROOT_URL=__GITEA_ROOT_URL__
       - GITEA__server__SSH_PORT=2222
       - GITEA__server__SSH_LISTEN_PORT=2222
       - GITEA__server__START_SSH_SERVER=true
-      - GITEA__server__DISABLE_REGISTRATION=true
       - GITEA__service__DISABLE_REGISTRATION=true
     volumes:
       - gitea-data:/var/lib/gitea
