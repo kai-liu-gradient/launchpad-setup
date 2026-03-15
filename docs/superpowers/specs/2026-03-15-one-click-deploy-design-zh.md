@@ -195,6 +195,7 @@ launchpad-setup/
 │
 └── deploy/                     # 新建：一键部署专用目录
     ├── setup.sh                # 主入口
+    ├── versions.conf           # 集中管理默认镜像版本（修改此文件即可更新版本）
     ├── scripts/
     │   ├── lib/
     │   │   ├── common.sh       # 公共函数：颜色输出、日志、校验
@@ -420,14 +421,30 @@ services:
   镜像仓库地址 [ghcr.io/anilaunchpad]:
 ```
 
-基础配置中提示输入统一版本号：
+默认版本集中管理在 `deploy/versions.conf`：
+
+```bash
+# deploy/versions.conf
+# 修改此文件更新默认镜像版本，无需改动脚本逻辑
+IMAGE_REGISTRY=ghcr.io/anilaunchpad
+IMAGE_VERSION=1.18.7
+
+# 单独覆盖（留空则使用 IMAGE_VERSION）
+IMAGE_VERSION_API=
+IMAGE_VERSION_UI=1.18.6
+IMAGE_VERSION_ROUTER=1.16.2
+IMAGE_VERSION_GATEWAY=
+IMAGE_VERSION_GITEA=1.21
+```
+
+脚本启动时通过 `source` 加载 `versions.conf`。基础配置中用户可覆盖：
 
 ```
   镜像仓库地址 [ghcr.io/anilaunchpad]:
-  镜像版本 [latest]:
+  镜像版本 [1.18.7]:
 ```
 
-所有服务默认使用相同版本：`{REGISTRY}/launchpad-api:{VERSION}`、`{REGISTRY}/launchpad-ui:{VERSION}` 等。
+所有服务默认使用统一版本，除非在 `versions.conf` 或交互中单独覆盖。
 
 高级配置（"性能调优"模块）中可单独覆盖每个服务的版本：
 

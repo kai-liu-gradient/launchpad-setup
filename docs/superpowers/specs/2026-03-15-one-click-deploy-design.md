@@ -195,6 +195,7 @@ launchpad-setup/
 │
 └── deploy/                     # NEW: one-click deployment
     ├── setup.sh                # Main entry point
+    ├── versions.conf           # Centralized default image versions (edit this file to update)
     ├── scripts/
     │   ├── lib/
     │   │   ├── common.sh       # Common functions: colors, logging, validation
@@ -420,14 +421,30 @@ Images are referenced by a configurable registry prefix. The script prompts for 
   Image registry [ghcr.io/anilaunchpad]:
 ```
 
-In basic configuration, a single unified version is prompted:
+Default versions are centralized in `deploy/versions.conf`:
+
+```bash
+# deploy/versions.conf
+# Edit this file to update default image versions — no script changes needed
+IMAGE_REGISTRY=ghcr.io/anilaunchpad
+IMAGE_VERSION=1.18.7
+
+# Per-service overrides (leave empty to use IMAGE_VERSION)
+IMAGE_VERSION_API=
+IMAGE_VERSION_UI=1.18.6
+IMAGE_VERSION_ROUTER=1.16.2
+IMAGE_VERSION_GATEWAY=
+IMAGE_VERSION_GITEA=1.21
+```
+
+The script loads `versions.conf` at startup via `source`. In basic configuration, the user can override:
 
 ```
   Image registry [ghcr.io/anilaunchpad]:
-  Image version [latest]:
+  Image version [1.18.7]:
 ```
 
-All services default to the same version: `{REGISTRY}/launchpad-api:{VERSION}`, `{REGISTRY}/launchpad-ui:{VERSION}`, etc.
+All services default to the unified version unless overridden in `versions.conf` or interactively.
 
 In advanced configuration ("Performance tuning" module), individual service versions can be overridden:
 
