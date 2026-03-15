@@ -159,7 +159,7 @@ INFRA_EOF
     networks:
       - launchpad-network
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:6802/api/health || exit 1"]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:6802/api/health',r=>{process.exit(r.statusCode<500?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 10s
       timeout: 5s
       retries: 5
