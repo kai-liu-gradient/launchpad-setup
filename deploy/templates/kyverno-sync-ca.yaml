@@ -1,0 +1,28 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: sync-launchpad-ca-cert
+spec:
+  generateExisting: true
+  rules:
+    - name: sync-ca-configmap
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      generate:
+        synchronize: true
+        apiVersion: v1
+        kind: ConfigMap
+        name: launchpad-ca-cert
+        namespace: "{{request.object.metadata.name}}"
+        clone:
+          namespace: kube-system
+          name: launchpad-ca-cert

@@ -1,0 +1,36 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: inject-launchpad-ca-cert
+spec:
+  rules:
+    - name: inject-ca-cert
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+                - ingress-nginx
+      mutate:
+        patchStrategicMerge:
+          spec:
+            volumes:
+              - name: launchpad-ca-cert
+                configMap:
+                  name: launchpad-ca-cert
+            containers:
+              - (name): "*"
+                volumeMounts:
+                  - name: launchpad-ca-cert
+                    mountPath: /etc/ssl/certs/launchpad-ca.pem
+                    subPath: ca.pem
+                    readOnly: true
+                env:
+                  - name: NODE_EXTRA_CA_CERTS
+                    value: /etc/ssl/certs/launchpad-ca.pem
