@@ -14,6 +14,7 @@ source "${DEPLOY_DIR}/scripts/lib/i18n.sh"
 
 # Parse CLI arguments
 ACTION="install"
+CONFIG_FILE=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         --reconfigure) ACTION="reconfigure"; shift ;;
@@ -21,10 +22,19 @@ while [[ $# -gt 0 ]]; do
         --upgrade)     ACTION="upgrade";     shift ;;
         --uninstall)   ACTION="uninstall";   shift ;;
         --resume)      ACTION="resume";      shift ;;
+        --verbose|-v)  VERBOSE=1;            shift ;;
         --help|-h)     ACTION="help";        shift ;;
+        --config)      [[ -z "${2:-}" ]] && { log_error "--config requires a file path"; exit 1; }
+                       CONFIG_FILE="$2"; shift 2 ;;
         *) log_error "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+# Validate --config is only used with install/reconfigure
+if [[ -n "$CONFIG_FILE" && "$ACTION" != "install" && "$ACTION" != "reconfigure" ]]; then
+    log_error "--config is only valid with install/reconfigure"
+    exit 1
+fi
 
 # Load previous config if reconfiguring
 if [[ "$ACTION" == "reconfigure" ]] && [[ -f "${DEPLOY_DIR}/generated/.setup.conf" ]]; then
@@ -36,9 +46,6 @@ case "$ACTION" in
         # Banner
         print_banner "AniLaunchpad Setup" "$SETUP_VERSION"
 
-        # Language selection
-        select_language
-
         # Load remaining modules
         source "${DEPLOY_DIR}/scripts/lib/detect.sh"
         source "${DEPLOY_DIR}/scripts/lib/interact.sh"
@@ -46,24 +53,30 @@ case "$ACTION" in
         source "${DEPLOY_DIR}/scripts/lib/render.sh"
         source "${DEPLOY_DIR}/scripts/lib/certs.sh"
         source "${DEPLOY_DIR}/scripts/lib/k3s.sh"
+        source "${DEPLOY_DIR}/scripts/lib/k8s-components.sh"
         source "${DEPLOY_DIR}/scripts/lib/database.sh"
         source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
 
-        # Phase 1: Detect environment
-        check_environment
-
-        # Phase 2: Collect configuration
-        collect_basic_config
-        collect_advanced_config
-
-        # Phase 3: Confirm
-        show_summary
-        if ! ask_confirm "$MSG_DEPLOY_CONFIRM" "Y"; then
-            log_warn "Deployment cancelled."
-            exit 0
+        if [[ -n "$CONFIG_FILE" ]]; then
+            # Non-interactive: load config from file
+            [[ ! -f "$CONFIG_FILE" ]] && { log_error "Config file not found: $CONFIG_FILE"; exit 1; }
+            source "$CONFIG_FILE"
+            source "${DEPLOY_DIR}/scripts/lang/${LANG_CHOICE:-en}.sh"
+            check_environment
+        else
+            # Interactive: original flow
+            select_language
+            check_environment
+            collect_basic_config
+            collect_advanced_config
+            show_summary
+            if ! ask_confirm "$MSG_DEPLOY_CONFIRM" "Y"; then
+                log_warn "Deployment cancelled."
+                exit 0
+            fi
         fi
 
-        # Phase 4: Generate
+        # Phase 4: Generate (shared by both modes)
         if ! load_secrets; then
             generate_secrets
         fi
@@ -74,8 +87,9 @@ case "$ACTION" in
         # Phase 5: Deploy
         setup_kubernetes
         setup_certificates
+        setup_k8s_components
         deploy_services
-        register_cluster
+        register_cluster || log_warn "Cluster registration failed — you can retry later with: ./deploy/setup.sh --resume"
 
         # Done
         show_result
@@ -101,11 +115,13 @@ case "$ACTION" in
         echo ""
         echo "Options:"
         echo "  (none)          Fresh install (interactive)"
+        echo "  --config FILE   Non-interactive install using config file"
         echo "  --reconfigure   Re-enter configuration"
         echo "  --status        Show service status"
         echo "  --upgrade       Update image versions"
         echo "  --uninstall     Uninstall (with confirmation)"
         echo "  --resume        Resume from failed phase"
+        echo "  --verbose, -v   Show detailed output"
         echo "  --help          Show this help"
         ;;
 esac
