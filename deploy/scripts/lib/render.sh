@@ -6,6 +6,7 @@ render_templates() {
 
     # Create output directories
     mkdir -p "${DEPLOY_DIR}/generated/launchpad/config"
+    mkdir -p "${DEPLOY_DIR}/generated/launchpad/cron"
     mkdir -p "${DEPLOY_DIR}/generated/gateway"
     mkdir -p "${DEPLOY_DIR}/generated/nginx/certs"
 
@@ -19,12 +20,16 @@ render_templates() {
     export CORS_ORIGINS="https://${LAUNCHPAD_DOMAIN}"
     export INGRESS_DOMAIN="${DOMAIN}"
     export BASE_DOMAIN="${DOMAIN}"
-    export ANI_CODE_GATEWAY_URL="https://${LAUNCHPAD_DOMAIN}/gatewayproxy"
     export ANI_CODE_RELEASE_URL="https://${GITEA_DOMAIN}/launchpad/ani-code/archive/main.tar.gz"
     export GITEA_ROOT_URL="https://${GITEA_DOMAIN}"
-    export GITEA_GIT_SSH="git@${GITEA_DOMAIN}:2222"
     export ENTRA_REDIRECT_URI="https://${LAUNCHPAD_DOMAIN}/api/v1/auth/microsoft/callback"
     export GATEWAY_PUBLIC_URL="https://${LAUNCHPAD_DOMAIN}/gatewayproxy"
+
+    # Internal service URLs: use Docker DNS for compose-local services, external URLs otherwise
+    export ROUTER_LOCAL_URL="${ROUTER_LOCAL_URL:-http://router:6580}"
+    export ANI_CODE_GATEWAY_URL="${ANI_CODE_GATEWAY_URL:-${GATEWAY_PUBLIC_URL}}"
+    # k8s pods are the SSH clients — must use resolvable domain, not Docker DNS
+    export GITEA_GIT_SSH="${GITEA_GIT_SSH:-git@${GITEA_DOMAIN}:2222}"
 
     # Resolve image versions
     export IMAGE_VERSION_API="${IMAGE_VERSION_API:-$IMAGE_VERSION}"
@@ -32,6 +37,14 @@ render_templates() {
     export IMAGE_VERSION_ROUTER="${IMAGE_VERSION_ROUTER:-$IMAGE_VERSION}"
     export IMAGE_VERSION_GATEWAY="${IMAGE_VERSION_GATEWAY:-$IMAGE_VERSION}"
     export IMAGE_VERSION_GITEA="${IMAGE_VERSION_GITEA:-$IMAGE_VERSION}"
+
+    # Override DEFAULT_BACKEND for builtin mode — interact.sh sets "localhost"
+    # but builtin k3s needs ingress-nginx NodePort
+    if [[ "${K8S_MODE:-}" == "builtin" ]]; then
+        local host_ip
+        host_ip=$(detect_internal_ip 2>/dev/null || echo "127.0.0.1")
+        export DEFAULT_BACKEND="http://${host_ip}:30080"
+    fi
 
     # Build database URLs
     if [[ "$DB_MODE" == "builtin" ]]; then
@@ -68,7 +81,8 @@ render_templates() {
     export ZT_PRIVATE_KEY ZT_PUBLIC_KEY
     export REDIS_HOST REDIS_PORT REDIS_PASSWORD
     export DEFAULT_BACKEND STORAGE_CLASS
-    export ANI_CODE_GATEWAY_API_KEY LAUNCHPAD_INTERNAL_SECRET
+    export ANI_CODE_GATEWAY_API_KEY ANI_CODE_GATEWAY_URL LAUNCHPAD_INTERNAL_SECRET
+    export ROUTER_LOCAL_URL GITEA_GIT_SSH
     export ADMIN_EMAIL IMAGE_REGISTRY
     export IMAGE_VERSION_API IMAGE_VERSION_UI IMAGE_VERSION_ROUTER IMAGE_VERSION_GATEWAY IMAGE_VERSION_GITEA
 
@@ -77,6 +91,7 @@ render_templates() {
     envsubst < "${DEPLOY_DIR}/templates/env.gateway.template" > "${DEPLOY_DIR}/generated/gateway/.env"
     envsubst '${DOMAIN} ${LAUNCHPAD_DOMAIN} ${GITEA_DOMAIN}' < "${DEPLOY_DIR}/templates/nginx.conf.template" > "${DEPLOY_DIR}/generated/nginx/nginx.conf"
     envsubst < "${DEPLOY_DIR}/templates/settings.yml.template" > "${DEPLOY_DIR}/generated/launchpad/config/settings.yml"
+    cp "${DEPLOY_DIR}/templates/crontab" "${DEPLOY_DIR}/generated/launchpad/cron/crontab"
 
     # Render docker-compose.yml (conditional logic)
     render_compose
@@ -141,6 +156,14 @@ INFRA_EOF
     image: __IMAGE_REGISTRY__/launchpad-api:__IMAGE_VERSION_API__
     platform: linux/amd64
     restart: unless-stopped
+    deploy:
+      replicas: __API_REPLICAS__
+      update_config:
+        order: start-first
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        order: start-first
     env_file: ./launchpad/.env
     environment:
       - NODE_ENV=production
@@ -149,6 +172,7 @@ INFRA_EOF
       - KUBERNETES_ENABLED=true
       - ANI_CODE_GATEWAY_ENABLED=true
       - GRACEFUL_SHUTDOWN_TIMEOUT_MS=30000
+      - NODE_TLS_REJECT_UNAUTHORIZED=__NODE_TLS_REJECT__
     stop_grace_period: 2m
     stop_signal: SIGTERM
     volumes:
@@ -186,6 +210,14 @@ INFRA_EOF
     image: __IMAGE_REGISTRY__/launchpad-router:__IMAGE_VERSION_ROUTER__
     platform: linux/amd64
     restart: unless-stopped
+    deploy:
+      replicas: __ROUTER_REPLICAS__
+      update_config:
+        order: start-first
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        order: start-first
     env_file: ./launchpad/.env
     environment:
       - WORKER_PORT=6580
@@ -213,16 +245,19 @@ INFRA_EOF
     env_file: ./launchpad/.env
     user: root
     command: >
-      sh -c "cp /app/pd/deploy/crontab /etc/crontabs/root
-      && chown root:root /etc/crontabs/root
-      && crond -f -l 0"
+      sh -c "echo '=== Loaded crontab ===' &&
+             cat /etc/crontabs/root &&
+             echo '=== Starting crond ===' &&
+             crond -f -l 0"
     cap_add:
       - SETGID
       - SETUID
-      - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:false
+    environment:
+      - NODE_ENV=production
     volumes:
+      - ./launchpad/cron/crontab:/etc/crontabs/root:ro
       - cron-logs:/var/log/cron
     networks:
       - launchpad-network
@@ -242,6 +277,8 @@ INFRA_EOF
     image: __IMAGE_REGISTRY__/ani-code-gateway:__IMAGE_VERSION_GATEWAY__
     platform: linux/amd64
     restart: unless-stopped
+    deploy:
+      replicas: __GATEWAY_REPLICAS__
     env_file: ./gateway/.env
     volumes:
       - gateway-data:/app/data
@@ -284,6 +321,27 @@ INFRA_EOF
       retries: 10
       start_period: 15s
 
+  heartbeat:
+    image: bitnami/kubectl:latest
+    restart: unless-stopped
+    user: root
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Waiting for heartbeat config..."
+        while [ ! -f /heartbeat/heartbeat.env ]; do sleep 5; done
+        echo "Starting heartbeat service..."
+        set -a; source /heartbeat/heartbeat.env; set +a
+        export RUN_ONCE=false
+        exec bash /heartbeat/k3s-heartbeat.sh
+    environment:
+      - NODE_TLS_REJECT_UNAUTHORIZED=__NODE_TLS_REJECT__
+    volumes:
+      - ./heartbeat:/heartbeat:ro
+      - ./heartbeat/kubeconfig:/.kube/config:ro
+    networks:
+      - launchpad-network
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -294,7 +352,11 @@ INFRA_EOF
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
     networks:
-      - launchpad-network
+      launchpad-network:
+        aliases:
+          - __LAUNCHPAD_DOMAIN__
+          - __GITEA_DOMAIN__
+          - example.__BASE_DOMAIN__
     depends_on:
       - api
       - ui
@@ -302,10 +364,11 @@ INFRA_EOF
       - gateway
       - gitea
     healthcheck:
-      test: ["CMD-SHELL", "nginx -t && curl -sf http://localhost:80/ || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "nginx -t && wget -q --spider http://127.0.0.1:80/nginx-health || exit 1"]
+      interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 5s
 
 SERVICES_EOF
 
@@ -317,19 +380,25 @@ SERVICES_EOF
         -e "s|__IMAGE_VERSION_ROUTER__|${IMAGE_VERSION_ROUTER}|g" \
         -e "s|__IMAGE_VERSION_GATEWAY__|${IMAGE_VERSION_GATEWAY}|g" \
         -e "s|__IMAGE_VERSION_GITEA__|${IMAGE_VERSION_GITEA}|g" \
-        -e "s|__GITEA_DB_HOST__|${GITEA_DB_HOST:-$DB_HOST}|g" \
-        -e "s|__GITEA_DB_PORT__|${GITEA_DB_PORT:-$DB_PORT}|g" \
+        -e "s|__GITEA_DB_HOST__|${GITEA_DB_HOST:-${DB_HOST:-postgres}}|g" \
+        -e "s|__GITEA_DB_PORT__|${GITEA_DB_PORT:-${DB_PORT:-5432}}|g" \
         -e "s|__GITEA_DB_NAME__|${GITEA_DB_NAME:-gitea}|g" \
         -e "s|__GITEA_DB_USER__|${GITEA_DB_USER:-gitea}|g" \
         -e "s|__GITEA_DB_PASSWORD__|${GITEA_DB_PASSWORD}|g" \
-        -e "s|__GITEA_ROOT_URL__|${GITEA_ROOT_URL}|g" \
+        -e "s|__GITEA_ROOT_URL__|${GITEA_ROOT_URL:-https://${GITEA_DOMAIN}}|g" \
         -e "s|__REDIS_PASSWORD__|${REDIS_PASSWORD}|g" \
         -e "s|__POSTGRES_SUPERUSER_PASSWORD__|${POSTGRES_SUPERUSER_PASSWORD}|g" \
-        -e "s|__KUBECONFIG_PATH__|${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}|g" \
+        -e "s|__KUBECONFIG_PATH__|${K8S_KUBECONFIG_PATH:-/etc/rancher/k3s/k3s.yaml}|g" \
         -e "s|__EXTERNAL_DOMAIN__|${EXTERNAL_DOMAIN}|g" \
         -e "s|__BASE_DOMAIN__|${BASE_DOMAIN}|g" \
         -e "s|__DEFAULT_BACKEND__|${DEFAULT_BACKEND}|g" \
         -e "s|__ZT_PUBLIC_KEY__|${ZT_PUBLIC_KEY}|g" \
+        -e "s|__LAUNCHPAD_DOMAIN__|${LAUNCHPAD_DOMAIN}|g" \
+        -e "s|__GITEA_DOMAIN__|${GITEA_DOMAIN}|g" \
+        -e "s|__NODE_TLS_REJECT__|$( [[ "${SSL_MODE}" == "selfsigned" ]] && echo 0 || echo 1 )|g" \
+        -e "s|__API_REPLICAS__|${API_REPLICAS:-1}|g" \
+        -e "s|__ROUTER_REPLICAS__|${ROUTER_REPLICAS:-1}|g" \
+        -e "s|__GATEWAY_REPLICAS__|${GATEWAY_REPLICAS:-1}|g" \
         "$compose_file"
 
     # Networks and volumes
