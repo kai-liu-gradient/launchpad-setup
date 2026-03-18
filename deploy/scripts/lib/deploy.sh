@@ -191,6 +191,145 @@ bootstrap_gitea() {
     fi
 }
 
+import_templates() {
+    log_info "$MSG_DEPLOY_TEMPLATES"
+
+    local compose_file="${DEPLOY_DIR}/generated/docker-compose.yml"
+    local files_dir="${PROJECT_DIR}/files"
+    local gitea_admin="${ADMIN_EMAIL%%@*}"
+    local gitea_pass="${ADMIN_PASSWORD}"
+    local gitea_api="http://localhost:3000/api/v1"
+    local api_base="http://localhost:6802"  # API container internal port, matches docker-compose config
+
+    # Check prerequisites
+    if [[ -z "${GITEA_ACCESS_TOKEN:-}" ]]; then
+        log_warn "No Gitea token — skipping template import"
+        return 1
+    fi
+
+    if [[ ! -d "$files_dir" ]]; then
+        log_warn "No files/ directory found — skipping template import"
+        return 0
+    fi
+
+    # Helper: run curl inside gitea container (defined early for health check)
+    _gitea_curl() {
+        docker compose -f "$compose_file" exec -T gitea curl -s "$@"
+    }
+
+    # Check Gitea is healthy
+    local gitea_status
+    gitea_status=$(_gitea_curl -o /dev/null -w "%{http_code}" "${gitea_api}/version" 2>/dev/null || echo "000")
+    if [[ "$gitea_status" != "200" ]]; then
+        log_warn "Gitea not healthy (HTTP $gitea_status) — skipping template import"
+        return 1
+    fi
+
+    # Check API is healthy
+    local api_status
+    api_status=$(docker compose -f "$compose_file" exec -T api curl -s -o /dev/null -w "%{http_code}" "${api_base}/health" 2>/dev/null || echo "000")
+    if [[ "$api_status" != "200" ]]; then
+        log_warn "API not healthy (HTTP $api_status) — skipping template import"
+        return 1
+    fi
+
+    # Phase 1: Push git repos from tar.gz files
+    local tar_file repo_name
+    for tar_file in "$files_dir"/*.tar.gz; do
+        [[ -f "$tar_file" ]] || continue
+        repo_name=$(basename "$tar_file" | sed 's/-main\.tar\.gz$//')
+
+        # Check if repo exists
+        local repo_status
+        repo_status=$(_gitea_curl -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${GITEA_ACCESS_TOKEN}" \
+            "${gitea_api}/repos/launchpad/${repo_name}")
+
+        if [[ "$repo_status" == "200" ]]; then
+            # Check if repo has commits (not empty)
+            local commits
+            commits=$(_gitea_curl \
+                -H "Authorization: token ${GITEA_ACCESS_TOKEN}" \
+                "${gitea_api}/repos/launchpad/${repo_name}/commits?limit=1")
+            if echo "$commits" | grep -q '"sha"'; then
+                log_ok "$MSG_DEPLOY_TEMPLATES_REPO ${repo_name} — $MSG_DEPLOY_TEMPLATES_SKIP"
+                continue
+            fi
+        else
+            # Create empty repo
+            _gitea_curl -X POST "${gitea_api}/orgs/launchpad/repos" \
+                -H "Authorization: token ${GITEA_ACCESS_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "{\"name\":\"${repo_name}\",\"auto_init\":false,\"default_branch\":\"main\"}" >/dev/null
+        fi
+
+        # Extract and push
+        local tmp_dir
+        tmp_dir=$(mktemp -d)
+        tar xzf "$tar_file" -C "$tmp_dir" --strip-components=1 2>/dev/null || tar xzf "$tar_file" -C "$tmp_dir"
+
+        (
+            cd "$tmp_dir"
+            git init -b main >/dev/null 2>&1
+            git add -A >/dev/null 2>&1
+            git commit -m "Initial import" --author="Launchpad <launchpad@${DOMAIN}>" >/dev/null 2>&1
+
+            local remote_url="https://${gitea_admin}:${gitea_pass}@${GITEA_DOMAIN}/launchpad/${repo_name}.git"
+            if [[ "${SSL_MODE}" == "selfsigned" ]]; then
+                GIT_SSL_NO_VERIFY=1 git push -f "$remote_url" main >/dev/null 2>&1
+            else
+                git push -f "$remote_url" main >/dev/null 2>&1
+            fi
+        )
+        rm -rf "$tmp_dir"
+
+        log_ok "$MSG_DEPLOY_TEMPLATES_REPO ${repo_name}"
+    done
+
+    # Phase 2: Import YAML templates via API
+    local yaml_file yaml_content
+    for yaml_file in "$files_dir"/*.yaml; do
+        [[ -f "$yaml_file" ]] || continue
+        local template_name
+        template_name=$(basename "$yaml_file" .yaml)
+
+        # Read and substitute $GITLAB_DOMAIN
+        yaml_content=$(cat "$yaml_file" | sed "s|\\\$GITLAB_DOMAIN|https://${GITEA_DOMAIN}|g")
+
+        # Escape for JSON (handle newlines, quotes, backslashes)
+        local json_yaml
+        json_yaml=$(printf '%s' "$yaml_content" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
+            || printf '%s' "$yaml_content" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
+
+        # Validate
+        local validate_resp
+        validate_resp=$(docker compose -f "$compose_file" exec -T api \
+            curl -s -X POST "${api_base}/api/v1/templates/validate-yaml" \
+            -H "Content-Type: application/json" \
+            -d "{\"yaml\": ${json_yaml}}" 2>/dev/null)
+
+        if echo "$validate_resp" | grep -qi "error\|invalid"; then
+            log_warn "$MSG_DEPLOY_TEMPLATES_YAML ${template_name} — validation failed: $validate_resp"
+            continue
+        fi
+
+        # Import
+        local import_resp
+        import_resp=$(docker compose -f "$compose_file" exec -T api \
+            curl -s -X POST "${api_base}/api/v1/templates/from-yaml" \
+            -H "Content-Type: application/json" \
+            -d "{\"yaml\": ${json_yaml}}" 2>/dev/null)
+
+        if echo "$import_resp" | grep -qi "error"; then
+            log_warn "$MSG_DEPLOY_TEMPLATES_YAML ${template_name} — import failed: $import_resp"
+        else
+            log_ok "$MSG_DEPLOY_TEMPLATES_YAML ${template_name}"
+        fi
+    done
+
+    log_done "$MSG_DEPLOY_TEMPLATES_DONE"
+}
+
 show_result() {
     local ip
     ip=$(detect_internal_ip 2>/dev/null || echo "x.x.x.x")
