@@ -21,7 +21,14 @@ while [[ $# -gt 0 ]]; do
         --status)      ACTION="status";      shift ;;
         --upgrade)     ACTION="upgrade";     shift ;;
         --uninstall)   ACTION="uninstall";   shift ;;
-        --resume)      ACTION="resume";      shift ;;
+        --resume)           ACTION="resume";           shift ;;
+        --import-templates) ACTION="import-templates"; shift ;;
+        --uninstall-all)    ACTION="uninstall-all";    shift ;;
+        --setup-k3s)        ACTION="setup-k3s";        shift ;;
+        --setup-certs)      ACTION="setup-certs";      shift ;;
+        --setup-db)         ACTION="setup-db";         shift ;;
+        --restart)          [[ -z "${2:-}" ]] && { log_error "--restart requires a service name"; exit 1; }
+                            ACTION="restart"; RESTART_TARGET="$2"; shift 2 ;;
         --verbose|-v)  VERBOSE=1;            shift ;;
         --help|-h)     ACTION="help";        shift ;;
         --config)      [[ -z "${2:-}" ]] && { log_error "--config requires a file path"; exit 1; }
@@ -40,6 +47,19 @@ fi
 if [[ "$ACTION" == "reconfigure" ]] && [[ -f "${DEPLOY_DIR}/generated/.setup.conf" ]]; then
     source "${DEPLOY_DIR}/generated/.setup.conf"
 fi
+
+# Helper: load saved config for granular commands
+load_saved_config() {
+    if [[ ! -d "${DEPLOY_DIR}/generated" ]]; then
+        log_error "No deployment found. Run ./setup.sh first."
+        exit 1
+    fi
+    source "${DEPLOY_DIR}/versions.conf"
+    source "${DEPLOY_DIR}/generated/.setup.conf"
+    source "${DEPLOY_DIR}/scripts/lang/${LANG_CHOICE:-en}.sh"
+    source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
+    load_secrets || { log_error "Cannot load secrets."; exit 1; }
+}
 
 case "$ACTION" in
     install|reconfigure)
@@ -64,16 +84,10 @@ case "$ACTION" in
             source "${DEPLOY_DIR}/scripts/lang/${LANG_CHOICE:-en}.sh"
             check_environment
         else
-            # Interactive: original flow
+            # Interactive: page-based wizard
             select_language
             check_environment
-            collect_basic_config
-            collect_advanced_config
-            show_summary
-            if ! ask_confirm "$MSG_DEPLOY_CONFIRM" "Y"; then
-                log_warn "Deployment cancelled."
-                exit 0
-            fi
+            run_wizard
         fi
 
         # Phase 4: Generate (shared by both modes)
@@ -110,18 +124,68 @@ case "$ACTION" in
         source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
         resume_deploy
         ;;
+    import-templates)
+        source "${DEPLOY_DIR}/scripts/lib/detect.sh"
+        source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
+        source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
+        load_saved_config
+        import_templates
+        ;;
+    uninstall-all)
+        source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
+        uninstall_all
+        ;;
+    setup-k3s)
+        source "${DEPLOY_DIR}/scripts/lib/detect.sh"
+        source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
+        source "${DEPLOY_DIR}/scripts/lib/k3s.sh"
+        load_saved_config
+        setup_kubernetes
+        ;;
+    setup-certs)
+        source "${DEPLOY_DIR}/scripts/lib/detect.sh"
+        source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
+        source "${DEPLOY_DIR}/scripts/lib/certs.sh"
+        load_saved_config
+        setup_certificates
+        ;;
+    setup-db)
+        source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
+        source "${DEPLOY_DIR}/scripts/lib/database.sh"
+        load_saved_config
+        init_database
+        ;;
+    restart)
+        source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
+        load_saved_config
+        restart_service "$RESTART_TARGET"
+        ;;
     help)
         echo "Usage: $0 [OPTIONS]"
         echo ""
-        echo "Options:"
-        echo "  (none)          Fresh install (interactive)"
-        echo "  --config FILE   Non-interactive install using config file"
-        echo "  --reconfigure   Re-enter configuration"
-        echo "  --status        Show service status"
-        echo "  --upgrade       Update image versions"
-        echo "  --uninstall     Uninstall (with confirmation)"
-        echo "  --resume        Resume from failed phase"
-        echo "  --verbose, -v   Show detailed output"
-        echo "  --help          Show this help"
+        echo "Install:"
+        echo "  (none)              Fresh install (interactive wizard)"
+        echo "  --config FILE       Non-interactive install using config file"
+        echo "  --reconfigure       Re-enter configuration wizard"
+        echo ""
+        echo "Manage:"
+        echo "  --status            Show service status"
+        echo "  --restart <svc>     Restart service (api|ui|router|gateway|nginx|gitea|all)"
+        echo "  --upgrade           Update image versions"
+        echo ""
+        echo "Setup Phases:"
+        echo "  --setup-k3s         Install/reconfigure k3s only"
+        echo "  --setup-certs       Regenerate SSL certificates only"
+        echo "  --setup-db          Run database initialization only"
+        echo "  --import-templates  Import templates to API & Gitea"
+        echo ""
+        echo "Teardown:"
+        echo "  --uninstall         Stop services, remove containers and data"
+        echo "  --uninstall-all     Complete removal (services + k3s + config)"
+        echo "  --resume            Resume from failed deploy phase"
+        echo ""
+        echo "General:"
+        echo "  --verbose, -v       Show detailed output"
+        echo "  --help              Show this help"
         ;;
 esac

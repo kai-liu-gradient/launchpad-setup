@@ -412,6 +412,73 @@ uninstall_services() {
     fi
 }
 
+uninstall_all() {
+    local compose_file="${DEPLOY_DIR}/generated/docker-compose.yml"
+
+    # Load config to know K8S_MODE
+    if [[ -f "${DEPLOY_DIR}/generated/.setup.conf" ]]; then
+        source "${DEPLOY_DIR}/generated/.setup.conf"
+    fi
+
+    log_warn "$MSG_UNINSTALL_ALL_WARN"
+    echo ""
+    if ! ask_confirm "$MSG_UNINSTALL_ALL_CONFIRM" "N"; then
+        return 0
+    fi
+
+    # Step 1: Stop services and remove volumes
+    if [[ -f "$compose_file" ]]; then
+        log_info "Stopping services..."
+        docker compose -f "$compose_file" down -v 2>/dev/null || true
+        log_ok "Services and volumes removed"
+    fi
+
+    # Step 2: Remove heartbeat cron, script, env
+    if crontab -l 2>/dev/null | grep -q 'k3s-heartbeat'; then
+        crontab -l 2>/dev/null | grep -v 'k3s-heartbeat' | crontab - 2>/dev/null || true
+        log_ok "Heartbeat cron removed"
+    fi
+    rm -f /usr/local/bin/k3s-heartbeat.sh
+    rm -f /etc/default/k3s-heartbeat
+
+    # Step 3: Uninstall k3s if builtin
+    if [[ -f /usr/local/bin/k3s-uninstall.sh ]]; then
+        if [[ "${K8S_MODE:-builtin}" == "builtin" ]]; then
+            log_info "Uninstalling k3s..."
+            /usr/local/bin/k3s-uninstall.sh 2>/dev/null || true
+            log_ok "k3s uninstalled"
+        fi
+    fi
+
+    # Step 4: Remove generated directory
+    if [[ -d "${DEPLOY_DIR}/generated" ]]; then
+        rm -rf "${DEPLOY_DIR}/generated"
+        log_ok "Generated config removed"
+    fi
+
+    log_done "$MSG_UNINSTALL_ALL_DONE"
+}
+
+restart_service() {
+    local target="$1"
+    local valid_targets="api ui router gateway nginx gitea all"
+    if [[ ! " $valid_targets " =~ " $target " ]]; then
+        log_error "Unknown service: $target (valid: $valid_targets)"
+        exit 1
+    fi
+    local compose_file="${DEPLOY_DIR}/generated/docker-compose.yml"
+    if [[ ! -f "$compose_file" ]]; then
+        log_error "No deployment found. Run ./setup.sh first."
+        exit 1
+    fi
+    if [[ "$target" == "all" ]]; then
+        docker compose -f "$compose_file" restart
+    else
+        docker compose -f "$compose_file" restart "$target"
+    fi
+    log_done "Restarted: $target"
+}
+
 resume_deploy() {
     local compose_file="${DEPLOY_DIR}/generated/docker-compose.yml"
     if [[ ! -f "$compose_file" ]]; then
