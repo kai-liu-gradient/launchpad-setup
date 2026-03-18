@@ -67,7 +67,7 @@ MSG_K8S_CONTEXT="K8s Context 名称（留空使用当前）"
 MSG_K8S_INGRESS="Ingress 后端域名"
 MSG_K8S_STORAGE_CLASS="Storage Class"
 MSG_K8S_VERIFIED="集群连接已验证"
-MSG_K8S_MACOS_WARN="检测到 macOS：如使用内置 k3s，请确保已安装"
+
 
 # Advanced
 MSG_ADV_ENTER="是否进入高级配置？"
@@ -105,9 +105,14 @@ MSG_SMTP_USER="SMTP 用户名"
 MSG_SMTP_PASS="SMTP 密码"
 MSG_SMTP_FROM="发件人地址"
 
-# Image versions (advanced)
+# Image versions
+MSG_IMG_VERSIONS="镜像版本"
 MSG_IMG_UNIFIED="统一版本"
 MSG_IMG_OVERRIDE="按服务覆盖版本（留空保持统一版本）"
+
+# Navigation
+MSG_NAV_NEXT="回车继续，b 返回上一页"
+MSG_NAV_NEXT_ONLY="回车继续"
 
 # Deploy
 MSG_DEPLOY_CONFIRM="开始部署？"
@@ -120,6 +125,18 @@ MSG_DEPLOY_GITEA="初始化 Gitea..."
 MSG_DEPLOY_REGISTER="注册 K8s 集群..."
 MSG_DEPLOY_COMPLETE="AniLaunchpad 部署完成！"
 MSG_DEPLOY_FAILED="部署失败"
+
+# Templates
+MSG_DEPLOY_TEMPLATES="导入模版..."
+MSG_DEPLOY_TEMPLATES_DONE="模版导入完成"
+MSG_DEPLOY_TEMPLATES_REPO="推送仓库"
+MSG_DEPLOY_TEMPLATES_YAML="导入模版"
+MSG_DEPLOY_TEMPLATES_SKIP="已存在，跳过"
+
+# Uninstall
+MSG_UNINSTALL_ALL_WARN="完全卸载：服务、数据、k3s、证书和所有配置"
+MSG_UNINSTALL_ALL_CONFIRM="确定要完全卸载吗？此操作不可恢复。"
+MSG_UNINSTALL_ALL_DONE="环境已完全清理"
 
 # Output
 MSG_OUT_URLS="访问地址"

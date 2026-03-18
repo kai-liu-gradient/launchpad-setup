@@ -67,7 +67,7 @@ MSG_K8S_CONTEXT="K8s Context name (leave empty for current)"
 MSG_K8S_INGRESS="Ingress backend domain"
 MSG_K8S_STORAGE_CLASS="Storage Class"
 MSG_K8S_VERIFIED="Cluster connection verified"
-MSG_K8S_MACOS_WARN="macOS detected: ensure k3s is installed if using built-in mode"
+
 
 # Advanced
 MSG_ADV_ENTER="Enter advanced configuration?"
@@ -105,9 +105,14 @@ MSG_SMTP_USER="SMTP username"
 MSG_SMTP_PASS="SMTP password"
 MSG_SMTP_FROM="Sender address"
 
-# Image versions (advanced)
+# Image versions
+MSG_IMG_VERSIONS="Image versions"
 MSG_IMG_UNIFIED="Unified version"
 MSG_IMG_OVERRIDE="Override per-service (leave empty to keep unified version)"
+
+# Navigation
+MSG_NAV_NEXT="Enter to continue, b to go back"
+MSG_NAV_NEXT_ONLY="Enter to continue"
 
 # Deploy
 MSG_DEPLOY_CONFIRM="Start deployment?"
@@ -120,6 +125,18 @@ MSG_DEPLOY_GITEA="Bootstrapping Gitea..."
 MSG_DEPLOY_REGISTER="Registering K8s cluster..."
 MSG_DEPLOY_COMPLETE="AniLaunchpad deployment complete!"
 MSG_DEPLOY_FAILED="Deployment failed"
+
+# Templates
+MSG_DEPLOY_TEMPLATES="Importing templates..."
+MSG_DEPLOY_TEMPLATES_DONE="Templates imported"
+MSG_DEPLOY_TEMPLATES_REPO="Pushing repo"
+MSG_DEPLOY_TEMPLATES_YAML="Importing template"
+MSG_DEPLOY_TEMPLATES_SKIP="already exists, skipping"
+
+# Uninstall
+MSG_UNINSTALL_ALL_WARN="COMPLETE REMOVAL: services, data, k3s, certificates, and all configuration"
+MSG_UNINSTALL_ALL_CONFIRM="Are you absolutely sure? This cannot be undone."
+MSG_UNINSTALL_ALL_DONE="Environment fully cleaned"
 
 # Output
 MSG_OUT_URLS="Access URLs"
