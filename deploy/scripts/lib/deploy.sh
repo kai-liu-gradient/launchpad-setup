@@ -54,8 +54,8 @@ deploy_services() {
     echo ""
     echo -e "${BOLD}  Deploying services...${NC}"
     echo ""
-    # Total steps: infra(2) + db(2) + gitea(2) + services(4) + nginx(1) = 11
-    progress_start 11
+    # Total steps: infra(2) + db(2) + gitea(2) + templates(1) + services(4) + nginx(1) = 12
+    progress_start 12
 
     # Phase 1: Infrastructure
     if [[ "$DB_MODE" == "builtin" ]]; then
@@ -92,6 +92,10 @@ deploy_services() {
     _draw_progress "Bootstrapping Gitea..."
     bootstrap_gitea || deploy_fail "gitea bootstrap"
     progress_update "Gitea bootstrapped"
+
+    _draw_progress "$MSG_DEPLOY_TEMPLATES"
+    import_templates || log_warn "Template import failed — you can retry with: ./setup.sh --import-templates"
+    progress_update "$MSG_DEPLOY_TEMPLATES_DONE"
 
     # Phase 4: Application services
     _draw_progress "Starting API, UI, Router, Gateway..."
@@ -474,6 +478,9 @@ resume_deploy() {
 
     # Phase 5: Gitea bootstrap (idempotent)
     bootstrap_gitea
+
+    # Phase 5b: Template import (idempotent)
+    import_templates || log_warn "Template import failed — retry with: ./setup.sh --import-templates"
 
     setup_hosts
 
