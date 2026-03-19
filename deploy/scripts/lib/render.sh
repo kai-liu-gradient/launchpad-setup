@@ -24,6 +24,7 @@ render_templates() {
     export GITEA_ROOT_URL="https://${GITEA_DOMAIN}"
     export ENTRA_REDIRECT_URI="https://${LAUNCHPAD_DOMAIN}/api/v1/auth/microsoft/callback"
     export GATEWAY_PUBLIC_URL="https://${LAUNCHPAD_DOMAIN}/gatewayproxy"
+    export TELEGRAM_BOT_USERNAME="${TELEGRAM_BOT_USERNAME:-}"
 
     # Internal service URLs: use Docker DNS for compose-local services, external URLs otherwise
     export ROUTER_LOCAL_URL="${ROUTER_LOCAL_URL:-http://router:6580}"
@@ -43,8 +44,15 @@ render_templates() {
     if [[ "${K8S_MODE:-}" == "builtin" ]]; then
         local host_ip
         host_ip=$(detect_internal_ip 2>/dev/null || echo "127.0.0.1")
-        export DEFAULT_BACKEND="http://${host_ip}:30080"
+        export DEFAULT_BACKEND="${host_ip}:30080"
+        export HOST_IP="${host_ip}"
+    else
+        export HOST_IP="127.0.0.1"
     fi
+
+    # Strip accidental http:// prefix — router adds the protocol itself
+    DEFAULT_BACKEND="${DEFAULT_BACKEND#http://}"
+    DEFAULT_BACKEND="${DEFAULT_BACKEND#https://}"
 
     # Build database URLs
     if [[ "$DB_MODE" == "builtin" ]]; then
@@ -86,10 +94,24 @@ render_templates() {
     export ADMIN_EMAIL IMAGE_REGISTRY
     export IMAGE_VERSION_API IMAGE_VERSION_UI IMAGE_VERSION_ROUTER IMAGE_VERSION_GATEWAY IMAGE_VERSION_GITEA
 
+    # Preserve runtime-generated values from existing .env (populated by bootstrap_gitea)
+    local _prev_gitea_token="" _prev_gitea_user=""
+    if [[ -f "${DEPLOY_DIR}/generated/launchpad/.env" ]]; then
+        _prev_gitea_token=$(grep '^GITEA_ACCESS_TOKEN=' "${DEPLOY_DIR}/generated/launchpad/.env" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+        _prev_gitea_user=$(grep '^GITEA_USER=' "${DEPLOY_DIR}/generated/launchpad/.env" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+    fi
+
     # Render .env files
     envsubst < "${DEPLOY_DIR}/templates/env.template" > "${DEPLOY_DIR}/generated/launchpad/.env"
+
+    # Restore runtime-generated values
+    if [[ -n "$_prev_gitea_token" ]]; then
+        echo "" >> "${DEPLOY_DIR}/generated/launchpad/.env"
+        echo "GITEA_ACCESS_TOKEN=${_prev_gitea_token}" >> "${DEPLOY_DIR}/generated/launchpad/.env"
+        echo "GITEA_USER=${_prev_gitea_user}" >> "${DEPLOY_DIR}/generated/launchpad/.env"
+    fi
     envsubst < "${DEPLOY_DIR}/templates/env.gateway.template" > "${DEPLOY_DIR}/generated/gateway/.env"
-    envsubst '${DOMAIN} ${LAUNCHPAD_DOMAIN} ${GITEA_DOMAIN}' < "${DEPLOY_DIR}/templates/nginx.conf.template" > "${DEPLOY_DIR}/generated/nginx/nginx.conf"
+    envsubst '${DOMAIN} ${LAUNCHPAD_DOMAIN} ${GITEA_DOMAIN} ${HOST_IP}' < "${DEPLOY_DIR}/templates/nginx.conf.template" > "${DEPLOY_DIR}/generated/nginx/nginx.conf"
     envsubst < "${DEPLOY_DIR}/templates/settings.yml.template" > "${DEPLOY_DIR}/generated/launchpad/config/settings.yml"
     cp "${DEPLOY_DIR}/templates/crontab" "${DEPLOY_DIR}/generated/launchpad/cron/crontab"
 
@@ -280,6 +302,8 @@ INFRA_EOF
     deploy:
       replicas: __GATEWAY_REPLICAS__
     env_file: ./gateway/.env
+    environment:
+      - NODE_TLS_REJECT_UNAUTHORIZED=__NODE_TLS_REJECT__
     volumes:
       - gateway-data:/app/data
       - gateway-logs:/app/logs
@@ -320,27 +344,6 @@ INFRA_EOF
       timeout: 5s
       retries: 10
       start_period: 15s
-
-  heartbeat:
-    image: bitnami/kubectl:latest
-    restart: unless-stopped
-    user: root
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        echo "Waiting for heartbeat config..."
-        while [ ! -f /heartbeat/heartbeat.env ]; do sleep 5; done
-        echo "Starting heartbeat service..."
-        set -a; source /heartbeat/heartbeat.env; set +a
-        export RUN_ONCE=false
-        exec bash /heartbeat/k3s-heartbeat.sh
-    environment:
-      - NODE_TLS_REJECT_UNAUTHORIZED=__NODE_TLS_REJECT__
-    volumes:
-      - ./heartbeat:/heartbeat:ro
-      - ./heartbeat/kubeconfig:/.kube/config:ro
-    networks:
-      - launchpad-network
 
   nginx:
     image: nginx:alpine
@@ -400,6 +403,39 @@ SERVICES_EOF
         -e "s|__ROUTER_REPLICAS__|${ROUTER_REPLICAS:-1}|g" \
         -e "s|__GATEWAY_REPLICAS__|${GATEWAY_REPLICAS:-1}|g" \
         "$compose_file"
+
+    # Builtin mode: add extra_hosts so containers can resolve project domains to host
+    if [[ "${K8S_MODE:-}" == "builtin" ]]; then
+        local host_ip
+        host_ip=$(detect_internal_ip 2>/dev/null || echo "127.0.0.1")
+        local extra_hosts
+        extra_hosts=$(printf '    extra_hosts:\n      - "%s:%s"\n      - "%s:%s"' \
+            "$LAUNCHPAD_DOMAIN" "$host_ip" "$GITEA_DOMAIN" "$host_ip")
+        local tmpfile="${compose_file}.tmp"
+        while IFS= read -r line; do
+            echo "$line"
+            if [[ "$line" == "  api:" || "$line" == "  cron:" || "$line" == "  backup-worker:" ]]; then
+                echo "$extra_hosts"
+            fi
+        done < "$compose_file" > "$tmpfile"
+        mv "$tmpfile" "$compose_file"
+    fi
+
+    # Self-signed mode: gateway reaches pods via nginx:443 (dnsmasq → host IP),
+    # nginx serves the correct wildcard cert. Gateway needs NODE_EXTRA_CA_CERTS
+    # to trust our self-signed CA.
+    if [[ "${SSL_MODE:-}" == "selfsigned" ]]; then
+        local ca_path="${DEPLOY_DIR}/generated/nginx/certs/ca.pem"
+        if [[ -f "$ca_path" ]]; then
+            local abs_ca_path
+            abs_ca_path=$(cd "$(dirname "$ca_path")" && pwd)/$(basename "$ca_path")
+            # Append NODE_EXTRA_CA_CERTS into gateway's existing environment block
+            # Match the line right after "env_file: ./gateway/.env" which is unique to gateway
+            sed_i "/env_file: .\/gateway\/.env/{n;n;s|      - NODE_TLS_REJECT_UNAUTHORIZED=|      - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/launchpad-ca.pem\n      - NODE_TLS_REJECT_UNAUTHORIZED=|;}" "$compose_file"
+            # Mount CA cert into gateway container
+            sed_i "s|      - gateway-logs:/app/logs|      - gateway-logs:/app/logs\n      - ${abs_ca_path}:/etc/ssl/certs/launchpad-ca.pem:ro|" "$compose_file"
+        fi
+    fi
 
     # Networks and volumes
     cat >> "$compose_file" <<'NET_EOF'

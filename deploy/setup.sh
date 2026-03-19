@@ -27,6 +27,7 @@ while [[ $# -gt 0 ]]; do
         --setup-k3s)        ACTION="setup-k3s";        shift ;;
         --setup-certs)      ACTION="setup-certs";      shift ;;
         --setup-db)         ACTION="setup-db";         shift ;;
+        --setup-telegram)   ACTION="setup-telegram";   shift ;;
         --restart)          [[ -z "${2:-}" ]] && { log_error "--restart requires a service name"; exit 1; }
                             ACTION="restart"; RESTART_TARGET="$2"; shift 2 ;;
         --verbose|-v)  VERBOSE=1;            shift ;;
@@ -63,8 +64,10 @@ load_saved_config() {
 
 case "$ACTION" in
     install|reconfigure)
-        # Banner
-        print_banner "AniLaunchpad Setup" "$SETUP_VERSION"
+        # Brand header shown by wizard pages; skip old banner for interactive mode
+        if [[ -n "$CONFIG_FILE" ]]; then
+            print_banner "AniLaunchpad Setup" "$SETUP_VERSION"
+        fi
 
         # Load remaining modules
         source "${DEPLOY_DIR}/scripts/lib/detect.sh"
@@ -98,12 +101,8 @@ case "$ACTION" in
         save_config
         save_secrets
 
-        # Phase 5: Deploy
-        setup_kubernetes
-        setup_certificates
-        setup_k8s_components
+        # Phase 5: Deploy (unified progress display)
         deploy_services
-        register_cluster || log_warn "Cluster registration failed — you can retry later with: ./deploy/setup.sh --resume"
 
         # Done
         show_result
@@ -121,18 +120,38 @@ case "$ACTION" in
         uninstall_services
         ;;
     resume)
+        source "${DEPLOY_DIR}/scripts/lib/detect.sh"
+        source "${DEPLOY_DIR}/scripts/lib/interact.sh"
+        source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
+        source "${DEPLOY_DIR}/scripts/lib/render.sh"
+        source "${DEPLOY_DIR}/scripts/lib/certs.sh"
+        source "${DEPLOY_DIR}/scripts/lib/k3s.sh"
+        source "${DEPLOY_DIR}/scripts/lib/k8s-components.sh"
+        source "${DEPLOY_DIR}/scripts/lib/database.sh"
         source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
-        resume_deploy
+        load_saved_config
+        deploy_services
+        show_result
         ;;
     import-templates)
         source "${DEPLOY_DIR}/scripts/lib/detect.sh"
         source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
         source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
         load_saved_config
+        # Load Gitea token from .env (not in .secrets)
+        if [[ -f "${DEPLOY_DIR}/generated/launchpad/.env" ]]; then
+            GITEA_ACCESS_TOKEN=$(grep '^GITEA_ACCESS_TOKEN=' "${DEPLOY_DIR}/generated/launchpad/.env" | cut -d= -f2)
+            export GITEA_ACCESS_TOKEN
+        fi
         import_templates
         ;;
     uninstall-all)
         source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
+        # Load lang for i18n messages (may fail if no prior install, use defaults)
+        if [[ -f "${DEPLOY_DIR}/generated/.setup.conf" ]]; then
+            source "${DEPLOY_DIR}/generated/.setup.conf"
+        fi
+        source "${DEPLOY_DIR}/scripts/lang/${LANG_CHOICE:-en}.sh"
         uninstall_all
         ;;
     setup-k3s)
@@ -155,6 +174,20 @@ case "$ACTION" in
         load_saved_config
         init_database
         ;;
+    setup-telegram)
+        source "${DEPLOY_DIR}/scripts/lib/detect.sh"
+        source "${DEPLOY_DIR}/scripts/lib/interact.sh"
+        source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
+        source "${DEPLOY_DIR}/scripts/lib/render.sh"
+        source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
+        load_saved_config
+        TELEGRAM_BOT_USERNAME=$(ask_default "Telegram Bot Username" "${TELEGRAM_BOT_USERNAME:-}")
+        TELEGRAM_BOT_TOKEN=$(ask_default "Telegram Bot Token" "${TELEGRAM_BOT_TOKEN:-}")
+        render_templates
+        save_config
+        restart_service "api"
+        restart_service "gateway"
+        ;;
     restart)
         source "${DEPLOY_DIR}/scripts/lib/deploy.sh"
         load_saved_config
@@ -174,15 +207,16 @@ case "$ACTION" in
         echo "  --upgrade           Update image versions"
         echo ""
         echo "Setup Phases:"
+        echo "  --resume            Resume full deploy using existing config"
         echo "  --setup-k3s         Install/reconfigure k3s only"
         echo "  --setup-certs       Regenerate SSL certificates only"
         echo "  --setup-db          Run database initialization only"
+        echo "  --setup-telegram    Configure Telegram bot settings"
         echo "  --import-templates  Import templates to API & Gitea"
         echo ""
         echo "Teardown:"
         echo "  --uninstall         Stop services, remove containers and data"
         echo "  --uninstall-all     Complete removal (services + k3s + config)"
-        echo "  --resume            Resume from failed deploy phase"
         echo ""
         echo "General:"
         echo "  --verbose, -v       Show detailed output"
