@@ -22,6 +22,13 @@ type DerivedValues struct {
 	CORSOrigins      string // https://{subdomain}.{domain}
 	InternalAPIURL   string // https://{subdomain}.{domain}/api
 	InternalAdminURL string // https://{subdomain}.{domain}/admin/adminapi
+	GatewayPublicURL string // https://{subdomain}.{domain}/gatewayproxy
+	GatewayURL       string // same as GatewayPublicURL (used as ANI_CODE_GATEWAY_URL)
+
+	// Domains (convenience fields for templates)
+	LaunchpadDomain string // {subdomain}.{domain}
+	GiteaDomain     string // {subdomain}-gitea.{domain}
+	IngressDomain   string // {domain} (same as ExternalDomain but semantic name)
 
 	// Database
 	DBConnStrings map[string]string // per-schema connection strings
@@ -34,9 +41,13 @@ type DerivedValues struct {
 	ImageRefs map[string]string // per-service full image references
 
 	// Network
-	HostIP         string // dynamically detected host IP (placeholder 127.0.0.1)
-	DefaultBackend string // computed for builtin K8s mode
-	NodeTLSReject  string // "0" if selfsigned, "" otherwise
+	HostIP           string // dynamically detected host IP (placeholder 127.0.0.1)
+	DefaultBackend   string // computed for builtin K8s mode
+	NodeTLSReject    string // "0" if selfsigned, "" otherwise
+	IngressClusterIP string // ingress-nginx ClusterIP for CoreDNS (placeholder 10.43.0.0)
+
+	// Kubernetes
+	StorageClass string // storage class name for PVCs
 
 	// Paths / derived strings
 	CACertPath        string
@@ -55,6 +66,11 @@ func ComputeDerived(cfg *config.Config, sec *secrets.Secrets) *DerivedValues {
 
 	d := &DerivedValues{}
 
+	// Domains (convenience fields)
+	d.LaunchpadDomain = launchpadDomain
+	d.GiteaDomain = giteaDomain
+	d.IngressDomain = cfg.Domain
+
 	// URLs
 	d.DashboardURL = "https://" + launchpadDomain
 	d.GiteaURL = "https://" + giteaDomain
@@ -64,6 +80,8 @@ func ComputeDerived(cfg *config.Config, sec *secrets.Secrets) *DerivedValues {
 	d.CORSOrigins = "https://" + launchpadDomain
 	d.InternalAPIURL = "https://" + launchpadDomain + "/api"
 	d.InternalAdminURL = "https://" + launchpadDomain + "/admin/adminapi"
+	d.GatewayPublicURL = "https://" + launchpadDomain + "/gatewayproxy"
+	d.GatewayURL = d.GatewayPublicURL
 
 	// Database connection strings
 	d.DBConnStrings = computeDBConnStrings(cfg, sec)
@@ -83,6 +101,14 @@ func ComputeDerived(cfg *config.Config, sec *secrets.Secrets) *DerivedValues {
 		d.DefaultBackend = d.HostIP + ":30080"
 	} else {
 		d.DefaultBackend = "localhost:30080"
+	}
+	d.IngressClusterIP = "10.43.0.0" // placeholder, populated at deploy time
+
+	// Kubernetes
+	if cfg.Kubernetes.StorageClass != "" {
+		d.StorageClass = cfg.Kubernetes.StorageClass
+	} else {
+		d.StorageClass = "local-path"
 	}
 
 	// TLS rejection flag

@@ -8,10 +8,10 @@ data:
   # These server blocks take priority over the wildcard because CoreDNS
   # selects the most specific zone match first.
   launchpad-specific.server: |
-    {{ .Config.Subdomain }}.{{ .Config.Domain }}:53 {{ .Config.Subdomain }}-gitea.{{ .Config.Domain }}:53 {
+    {{ .Derived.LaunchpadDomain }}:53 {{ .Derived.GiteaDomain }}:53 {
         hosts {
-            {{ .Derived.HostIP }} {{ .Config.Subdomain }}.{{ .Config.Domain }}
-            {{ .Derived.HostIP }} {{ .Config.Subdomain }}-gitea.{{ .Config.Domain }}
+            {{ .Derived.HostIP }} {{ .Derived.LaunchpadDomain }}
+            {{ .Derived.HostIP }} {{ .Derived.GiteaDomain }}
             ttl 60
         }
     }

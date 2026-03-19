@@ -43,8 +43,8 @@ services:
   api:
 {{- if eq .Config.Kubernetes.Mode "builtin" }}
     extra_hosts:
-      - "{{ .Config.Subdomain }}.{{ .Config.Domain }}:{{ .Derived.HostIP }}"
-      - "{{ .Config.Subdomain }}-gitea.{{ .Config.Domain }}:{{ .Derived.HostIP }}"
+      - "{{ .Derived.LaunchpadDomain }}:{{ .Derived.HostIP }}"
+      - "{{ .Derived.GiteaDomain }}:{{ .Derived.HostIP }}"
 {{- end }}
     image: {{ index .Derived.ImageRefs "api" }}
     platform: linux/amd64
@@ -102,8 +102,8 @@ services:
   router:
 {{- if eq .Config.Kubernetes.Mode "builtin" }}
     extra_hosts:
-      - "{{ .Config.Subdomain }}.{{ .Config.Domain }}:{{ .Derived.HostIP }}"
-      - "{{ .Config.Subdomain }}-gitea.{{ .Config.Domain }}:{{ .Derived.HostIP }}"
+      - "{{ .Derived.LaunchpadDomain }}:{{ .Derived.HostIP }}"
+      - "{{ .Derived.GiteaDomain }}:{{ .Derived.HostIP }}"
 {{- end }}
     image: {{ index .Derived.ImageRefs "router" }}
     platform: linux/amd64
@@ -139,8 +139,8 @@ services:
   cron:
 {{- if eq .Config.Kubernetes.Mode "builtin" }}
     extra_hosts:
-      - "{{ .Config.Subdomain }}.{{ .Config.Domain }}:{{ .Derived.HostIP }}"
-      - "{{ .Config.Subdomain }}-gitea.{{ .Config.Domain }}:{{ .Derived.HostIP }}"
+      - "{{ .Derived.LaunchpadDomain }}:{{ .Derived.HostIP }}"
+      - "{{ .Derived.GiteaDomain }}:{{ .Derived.HostIP }}"
 {{- end }}
     image: {{ index .Derived.ImageRefs "api" }}
     platform: linux/amd64
@@ -168,8 +168,8 @@ services:
   backup-worker:
 {{- if eq .Config.Kubernetes.Mode "builtin" }}
     extra_hosts:
-      - "{{ .Config.Subdomain }}.{{ .Config.Domain }}:{{ .Derived.HostIP }}"
-      - "{{ .Config.Subdomain }}-gitea.{{ .Config.Domain }}:{{ .Derived.HostIP }}"
+      - "{{ .Derived.LaunchpadDomain }}:{{ .Derived.HostIP }}"
+      - "{{ .Derived.GiteaDomain }}:{{ .Derived.HostIP }}"
 {{- end }}
     image: {{ index .Derived.ImageRefs "api" }}
     platform: linux/amd64
@@ -270,8 +270,8 @@ services:
     networks:
       launchpad-network:
         aliases:
-          - {{ .Config.Subdomain }}.{{ .Config.Domain }}
-          - {{ .Config.Subdomain }}-gitea.{{ .Config.Domain }}
+          - {{ .Derived.LaunchpadDomain }}
+          - {{ .Derived.GiteaDomain }}
           - example.{{ .Config.Domain }}
     depends_on:
       - api

@@ -255,6 +255,50 @@ func TestRenderGatewayEnv(t *testing.T) {
 	if !strings.Contains(content, "LAUNCHPAD_INTERNAL_SECRET=internal") {
 		t.Error(".env.gateway should contain the internal secret")
 	}
+	if !strings.Contains(content, "PORT_API=6555") {
+		t.Error(".env.gateway should contain PORT_API=6555")
+	}
+}
+
+func TestRenderStaticFiles(t *testing.T) {
+	ctx := fixtureRenderContext()
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+	for _, f := range []string{"kyverno-inject-ca.yaml", "kyverno-sync-ca.yaml", "crontab", "values-builtin.yml"} {
+		if _, err := os.Stat(filepath.Join(outDir, f)); err != nil {
+			t.Errorf("static file %s not copied: %v", f, err)
+		}
+	}
+}
+
+func TestRenderDerivedDomainFields(t *testing.T) {
+	cfg := testConfig()
+	sec := testSecrets()
+	d := ComputeDerived(cfg, sec)
+
+	if d.LaunchpadDomain != "launchpad.example.com" {
+		t.Errorf("LaunchpadDomain = %q, want %q", d.LaunchpadDomain, "launchpad.example.com")
+	}
+	if d.GiteaDomain != "launchpad-gitea.example.com" {
+		t.Errorf("GiteaDomain = %q, want %q", d.GiteaDomain, "launchpad-gitea.example.com")
+	}
+	if d.IngressDomain != "example.com" {
+		t.Errorf("IngressDomain = %q, want %q", d.IngressDomain, "example.com")
+	}
+	if d.GatewayPublicURL != "https://launchpad.example.com/gatewayproxy" {
+		t.Errorf("GatewayPublicURL = %q, want %q", d.GatewayPublicURL, "https://launchpad.example.com/gatewayproxy")
+	}
+	if d.GatewayURL != d.GatewayPublicURL {
+		t.Errorf("GatewayURL = %q, want it to equal GatewayPublicURL", d.GatewayURL)
+	}
+	if d.StorageClass != "local-path" {
+		t.Errorf("StorageClass = %q, want %q for default", d.StorageClass, "local-path")
+	}
+	if d.IngressClusterIP != "10.43.0.0" {
+		t.Errorf("IngressClusterIP = %q, want %q", d.IngressClusterIP, "10.43.0.0")
+	}
 }
 
 func TestRenderCoreDNS(t *testing.T) {
