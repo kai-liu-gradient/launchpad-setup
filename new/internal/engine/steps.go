@@ -1,12 +1,6 @@
 package engine
 
-import (
-	"context"
-	"fmt"
-	"os"
-	"path/filepath"
-	"time"
-)
+import "context"
 
 // BuildStepList returns the ordered list of deployment steps based on the
 // current configuration. Steps are conditionally included based on modes.
