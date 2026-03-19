@@ -185,8 +185,7 @@ case "$ACTION" in
         TELEGRAM_BOT_TOKEN=$(ask_default "Telegram Bot Token" "${TELEGRAM_BOT_TOKEN:-}")
         render_templates
         save_config
-        restart_service "api"
-        restart_service "gateway"
+        recreate_services api gateway
         ;;
     restart)
         source "${DEPLOY_DIR}/scripts/lib/deploy.sh"

@@ -51,71 +51,294 @@ setup_hosts() {
 }
 
 deploy_services() {
-    echo ""
-    echo -e "${BOLD}  Deploying services...${NC}"
-    echo ""
-    # Total steps: infra(2) + db(2) + gitea(2) + templates(1) + services(4) + nginx(1) = 12
-    progress_start 12
-
-    # Phase 1: Infrastructure
-    if [[ "$DB_MODE" == "builtin" ]]; then
-        _draw_progress "Starting PostgreSQL & Redis..."
-        $COMPOSE_CMD up -d postgres redis 2>&1 | verbose_filter
-        wait_for_healthy postgres 30 || deploy_fail "infrastructure (postgres)"
-        progress_update "PostgreSQL ready"
-        wait_for_healthy redis 15 || deploy_fail "infrastructure (redis)"
-        progress_update "Redis ready"
-    else
-        progress_update "External database"
-        progress_update "External Redis"
+    # Detect if we have a tty for fancy Style C display
+    local _has_tty=false
+    if [ -t 1 ] || (echo -n "" >/dev/tty 2>/dev/null); then
+        _has_tty=true
     fi
 
-    # Phase 2: Database init + schema migration
-    _draw_progress "Initializing database schemas..."
-    init_database || deploy_fail "database initialization"
-    progress_update "Database schemas created"
+    # ── Build dynamic step list ──
+    _ds_steps=()
+    _ds_idx=0
+    # Associative array: step key → array index
+    declare -A _ds_step_map
 
-    _draw_progress "Running schema migrations..."
-    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema.prisma 2>&1 | verbose_filter || deploy_fail "prisma db push (main)"
-    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/monitoring.prisma 2>&1 | verbose_filter || deploy_fail "prisma db push (monitoring)"
-    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema-billing.prisma 2>&1 | verbose_filter || deploy_fail "prisma db push (billing)"
-    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema-events.prisma 2>&1 | verbose_filter || deploy_fail "prisma db push (events)"
-    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema-stats.prisma 2>&1 | verbose_filter || deploy_fail "prisma db push (stats)"
-    progress_update "Migrations complete"
+    _add_step() {
+        local key="$1" label="$2"
+        _ds_steps+=("pending:0:${label}")
+        _ds_step_map[$key]=$_ds_idx
+        _ds_idx=$((_ds_idx + 1))
+    }
 
-    # Phase 3: Gitea
-    _draw_progress "Starting Gitea..."
+    # Ensure KUBECONFIG is set for helm/kubectl (install_k3s exports this,
+    # but if k3s is already running we skip that function)
+    export KUBECONFIG="${K8S_KUBECONFIG_PATH:-/etc/rancher/k3s/k3s.yaml}"
+
+    # k3s installation (only if builtin AND not already running)
+    local _k3s_needed=false
+    if [[ "${K8S_MODE:-builtin}" == "builtin" ]] && ! kubectl get nodes &>/dev/null 2>&1; then
+        _k3s_needed=true
+        _add_step "k3s" "$MSG_DEPLOY_PROGRESS_K3S"
+    fi
+
+    # SSL certificates (always)
+    _add_step "ssl" "$MSG_DEPLOY_PROGRESS_SSL"
+
+    # k8s components (only if builtin)
+    if [[ "${K8S_MODE:-builtin}" == "builtin" ]]; then
+        _add_step "ingress" "$MSG_DEPLOY_PROGRESS_INGRESS"
+        _add_step "coredns" "$MSG_DEPLOY_PROGRESS_COREDNS"
+        if [[ "${SSL_MODE:-}" == "selfsigned" ]]; then
+            _add_step "kyverno" "$MSG_DEPLOY_PROGRESS_KYVERNO"
+            _add_step "certdist" "$MSG_DEPLOY_PROGRESS_CERTDIST"
+        fi
+    fi
+
+    # Docker services (always)
+    _add_step "infra" "$MSG_DEPLOY_PROGRESS_INFRA"
+    _add_step "pg" "$MSG_DEPLOY_PROGRESS_PG"
+    _add_step "redis" "$MSG_DEPLOY_PROGRESS_REDIS"
+    _add_step "db" "$MSG_DEPLOY_PROGRESS_DB"
+    _add_step "gitea" "$MSG_DEPLOY_PROGRESS_GITEA"
+    _add_step "gitea_boot" "$MSG_DEPLOY_PROGRESS_GITEA_BOOT"
+    _add_step "api" "$MSG_DEPLOY_PROGRESS_API"
+    _add_step "ui" "$MSG_DEPLOY_PROGRESS_UI"
+    _add_step "router" "$MSG_DEPLOY_PROGRESS_ROUTER"
+    _add_step "nginx" "$MSG_DEPLOY_PROGRESS_NGINX"
+    _add_step "templates" "$MSG_DEPLOY_PROGRESS_TEMPLATES"
+    _add_step "cluster" "$MSG_DEPLOY_PROGRESS_CLUSTER"
+
+    _ds_total=${#_ds_steps[@]}
+    _ds_current=0
+
+    # Helper to look up step index by key
+    _step() { echo "${_ds_step_map[$1]}"; }
+
+    if [[ "$_has_tty" == "true" ]]; then
+        # ── Style C: fancy progress display with checkmarks/spinners ──
+        clear >/dev/tty 2>/dev/null || true
+        print_brand_header "$MSG_DEPLOY_DEPLOYING"
+
+        _deploy_area_top=6
+        printf "\033[?25l" >/dev/tty
+
+        _update_step() {
+            local idx="$1" status="$2" pct="${3:-0}"
+            local label="${_ds_steps[$idx]}"
+            # Extract label (third field)
+            label="${label#*:}"   # remove status:
+            label="${label#*:}"   # remove pct:
+            _ds_steps[$idx]="${status}:${pct}:${label}"
+        }
+        _redraw() { _draw_deploy_status "$_ds_current" "$_ds_total" _ds_steps; }
+        _complete_step() {
+            local idx="$1"
+            _update_step "$idx" "done" 100
+            _ds_current=$((_ds_current + 1))
+            local next=$((idx + 1))
+            [[ $next -lt $_ds_total ]] && _update_step "$next" "active" 0
+            _redraw
+        }
+        _fail_with_cursor() { printf "\033[?25h" >/dev/tty; deploy_fail "$1"; }
+
+        # Style C aware health wait — updates per-step progress bar with spinning animation
+        _wait_healthy_styled() {
+            local service="$1" timeout="$2" step_idx="$3"
+            local elapsed=0 tick=0
+            while [[ $elapsed -lt $timeout ]]; do
+                # Check health every 2s (every 6 ticks of 0.3s)
+                if (( tick % 6 == 0 )) && [[ $tick -gt 0 ]]; then
+                    elapsed=$((elapsed + 2))
+                fi
+                if (( tick % 6 == 0 )); then
+                    local container_id
+                    container_id=$($COMPOSE_CMD ps -q "$service" 2>/dev/null | head -1)
+                    if [[ -n "$container_id" ]]; then
+                        local hstatus
+                        hstatus=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || echo "unknown")
+                        if [[ "$hstatus" == "healthy" ]]; then
+                            return 0
+                        fi
+                    fi
+                fi
+                local step_pct=$(( elapsed * 100 / timeout ))
+                [[ $step_pct -gt 95 ]] && step_pct=95
+                _update_step "$step_idx" "active" "$step_pct"
+                _redraw
+                sleep 0.3
+                tick=$((tick + 1))
+            done
+            echo ""
+            log_error "$service $MSG_HEALTH_FAILED in ${timeout}s"
+            $COMPOSE_CMD logs --tail=20 "$service"
+            return 1
+        }
+
+        # Style C aware generic wait — updates progress bar while a command runs
+        _wait_cmd_styled() {
+            local step_idx="$1" timeout="$2"
+            shift 2
+            local elapsed=0 tick=0
+            # Run command in background
+            "$@" &
+            local _cmd_pid=$!
+            while kill -0 "$_cmd_pid" 2>/dev/null; do
+                if (( tick % 6 == 0 )) && [[ $tick -gt 0 ]]; then
+                    elapsed=$((elapsed + 2))
+                fi
+                local step_pct=$(( elapsed * 100 / timeout ))
+                [[ $step_pct -gt 95 ]] && step_pct=95
+                _update_step "$step_idx" "active" "$step_pct"
+                _redraw
+                sleep 0.3
+                tick=$((tick + 1))
+                if [[ $elapsed -ge $timeout ]]; then
+                    break
+                fi
+            done
+            wait "$_cmd_pid"
+        }
+
+        _update_step 0 "active" 0
+        _redraw
+    else
+        # ── Fallback: simple progress bar (no tty) ──
+        echo ""
+        echo -e "${BOLD}  Deploying services...${NC}"
+        echo ""
+        progress_start "$_ds_total"
+
+        _complete_step() { progress_update "${1:-}"; }
+        _fail_with_cursor() { deploy_fail "$1"; }
+    fi
+
+    # Helper: wait for healthy — uses styled version in tty mode
+    _do_wait() {
+        local service="$1" timeout="$2" step_idx="$3"
+        if [[ "$_has_tty" == "true" ]]; then
+            _wait_healthy_styled "$service" "$timeout" "$step_idx"
+        else
+            wait_for_healthy "$service" "$timeout"
+        fi
+    }
+
+    # ── Phase: K3s installation (conditional) ──
+    if [[ "$_k3s_needed" == "true" ]]; then
+        local _si=$(_step k3s)
+        [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 0; _redraw; }
+        # Tell install_k3s to use Style C progress instead of its own progress bar
+        [[ "$_has_tty" == "true" ]] && _DS_K3S_STEP=$_si
+        install_k3s || _fail_with_cursor "k3s installation"
+        unset _DS_K3S_STEP
+        _complete_step "$_si"
+    fi
+
+    # ── Phase: SSL certificates ──
+    local _si=$(_step ssl)
+    [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 0; _redraw; }
+    setup_certificates || _fail_with_cursor "SSL certificates"
+    _complete_step "$_si"
+
+    # ── Phase: K8s components (conditional on builtin) ──
+    if [[ "${K8S_MODE:-builtin}" == "builtin" ]]; then
+        # Ingress-Nginx
+        _si=$(_step ingress)
+        [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 0; _redraw; }
+        install_ingress_nginx || _fail_with_cursor "ingress-nginx"
+        _complete_step "$_si"
+
+        # CoreDNS
+        _si=$(_step coredns)
+        [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 0; _redraw; }
+        configure_coredns || _fail_with_cursor "coredns"
+        _complete_step "$_si"
+
+        # Kyverno + cert distribution (selfsigned only)
+        if [[ "${SSL_MODE:-}" == "selfsigned" ]]; then
+            _si=$(_step kyverno)
+            [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 0; _redraw; }
+            install_kyverno || _fail_with_cursor "kyverno"
+            _complete_step "$_si"
+
+            _si=$(_step certdist)
+            [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 0; _redraw; }
+            setup_cert_distribution || _fail_with_cursor "cert distribution"
+            _complete_step "$_si"
+        fi
+    fi
+
+    # ── Phase: Infrastructure (PostgreSQL & Redis) ──
+    if [[ "$DB_MODE" == "builtin" ]]; then
+        $COMPOSE_CMD up -d postgres redis 2>&1 | verbose_filter
+        _complete_step $(_step infra)
+        _do_wait postgres 30 $(_step pg) || _fail_with_cursor "infrastructure (postgres)"
+        _complete_step $(_step pg)
+        _do_wait redis 15 $(_step redis) || _fail_with_cursor "infrastructure (redis)"
+        _complete_step $(_step redis)
+    else
+        _complete_step $(_step infra)
+        _complete_step $(_step pg)
+        _complete_step $(_step redis)
+    fi
+
+    # ── Phase: Database init + migration ──
+    _si=$(_step db)
+    init_database || _fail_with_cursor "database initialization"
+    [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 20; _redraw; }
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema.prisma 2>&1 | verbose_filter || _fail_with_cursor "prisma db push (main)"
+    [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 40; _redraw; }
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/monitoring.prisma 2>&1 | verbose_filter || _fail_with_cursor "prisma db push (monitoring)"
+    [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 55; _redraw; }
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema-billing.prisma 2>&1 | verbose_filter || _fail_with_cursor "prisma db push (billing)"
+    [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 70; _redraw; }
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema-events.prisma 2>&1 | verbose_filter || _fail_with_cursor "prisma db push (events)"
+    [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 85; _redraw; }
+    $COMPOSE_CMD run --rm api npx prisma db push --schema prisma/schema-stats.prisma 2>&1 | verbose_filter || _fail_with_cursor "prisma db push (stats)"
+    [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 95; _redraw; }
+    $COMPOSE_CMD run --rm gateway npm run db:push 2>&1 | verbose_filter || _fail_with_cursor "prisma db push (gateway)"
+    _complete_step "$_si"
+
+    # ── Phase: Gitea ──
     $COMPOSE_CMD up -d gitea 2>&1 | verbose_filter
-    wait_for_healthy gitea 90 || deploy_fail "gitea"
-    progress_update "Gitea healthy"
+    _do_wait gitea 90 $(_step gitea) || _fail_with_cursor "gitea"
+    _complete_step $(_step gitea)
 
-    _draw_progress "Bootstrapping Gitea..."
-    bootstrap_gitea || deploy_fail "gitea bootstrap"
-    progress_update "Gitea bootstrapped"
+    bootstrap_gitea || _fail_with_cursor "gitea bootstrap"
+    _complete_step $(_step gitea_boot)
 
-    _draw_progress "$MSG_DEPLOY_TEMPLATES"
-    import_templates || log_warn "Template import failed — you can retry with: ./setup.sh --import-templates"
-    progress_update "$MSG_DEPLOY_TEMPLATES_DONE"
-
-    # Phase 4: Application services
-    _draw_progress "Starting API, UI, Router, Gateway..."
+    # ── Phase: Application services ──
     $COMPOSE_CMD up -d api ui router cron backup-worker gateway 2>&1 | verbose_filter
-    wait_for_healthy api 90 || deploy_fail "application services (api)"
-    progress_update "API ready"
-    wait_for_healthy ui 60 || deploy_fail "application services (ui)"
-    progress_update "UI ready"
-    wait_for_healthy router 60 || deploy_fail "application services (router)"
-    progress_update "Router ready"
+    _do_wait api 90 $(_step api) || _fail_with_cursor "application services (api)"
+    _complete_step $(_step api)
+    _do_wait ui 60 $(_step ui) || _fail_with_cursor "application services (ui)"
+    _complete_step $(_step ui)
+    _do_wait router 60 $(_step router) || _fail_with_cursor "application services (router)"
+    _complete_step $(_step router)
 
-    # Phase 5: Nginx
-    _draw_progress "Starting Nginx..."
+    # ── Phase: Nginx (must be before templates — git push needs HTTPS domain) ──
     $COMPOSE_CMD up -d nginx 2>&1 | verbose_filter
-    wait_for_healthy nginx 30 || deploy_fail "nginx"
-
+    _do_wait nginx 30 $(_step nginx) || _fail_with_cursor "nginx"
     setup_hosts
+    sleep 5  # Let nginx fully initialize HTTPS proxy before git push
+    _complete_step $(_step nginx)
 
-    progress_done
-    echo ""
+    # ── Phase: Templates ──
+    import_templates || log_warn "Template import failed — you can retry with: ./setup.sh --import-templates"
+    _complete_step $(_step templates)
+
+    # ── Phase: Cluster registration (moved inline) ──
+    _si=$(_step cluster)
+    [[ "$_has_tty" == "true" ]] && { _update_step "$_si" "active" 0; _redraw; }
+    register_cluster || log_warn "Cluster registration failed — you can retry later with: ./deploy/setup.sh --resume"
+    _complete_step "$_si"
+
+    if [[ "$_has_tty" == "true" ]]; then
+        printf "\033[?25h" >/dev/tty  # Show cursor
+        echo "" >/dev/tty
+    else
+        progress_done
+        echo ""
+    fi
 }
 
 bootstrap_gitea() {
@@ -199,11 +422,14 @@ import_templates() {
     log_info "$MSG_DEPLOY_TEMPLATES"
 
     local compose_file="${DEPLOY_DIR}/generated/docker-compose.yml"
+    # files/ can be in PROJECT_DIR (when running from deploy/setup.sh) or DEPLOY_DIR (root setup.sh)
     local files_dir="${PROJECT_DIR}/files"
+    [[ ! -d "$files_dir" ]] && files_dir="${DEPLOY_DIR}/files"
     local gitea_admin="${ADMIN_EMAIL%%@*}"
     local gitea_pass="${ADMIN_PASSWORD}"
     local gitea_api="http://localhost:3000/api/v1"
-    local api_base="http://localhost:6802"  # API container internal port, matches docker-compose config
+    local api_base="http://localhost:6802"   # API container internal port
+    local admin_base="http://localhost:6804" # Admin port (no auth required)
 
     # Check prerequisites
     if [[ -z "${GITEA_ACCESS_TOKEN:-}" ]]; then
@@ -229,12 +455,28 @@ import_templates() {
         return 1
     fi
 
-    # Check API is healthy
-    local api_status
-    api_status=$(docker compose -f "$compose_file" exec -T api curl -s -o /dev/null -w "%{http_code}" "${api_base}/health" 2>/dev/null || echo "000")
-    if [[ "$api_status" != "200" ]]; then
-        log_warn "API not healthy (HTTP $api_status) — skipping template import"
+    # Check API is healthy (API container has wget, not curl)
+    local api_health
+    api_health=$(docker compose -f "$compose_file" exec -T api wget -q -O- "${api_base}/health" 2>/dev/null || echo "")
+    if ! echo "$api_health" | grep -q '"healthy"'; then
+        log_warn "API not healthy — skipping template import"
         return 1
+    fi
+
+    # Pre-flight: verify Gitea is reachable via HTTPS domain (DNS + TLS chain)
+    local _gitea_https_ok=false
+    local _preflight_attempts=0
+    while [[ $_preflight_attempts -lt 15 ]]; do
+        if curl -sfk -o /dev/null --max-time 5 "https://${GITEA_DOMAIN}/api/v1/version" 2>/dev/null; then
+            _gitea_https_ok=true
+            break
+        fi
+        _preflight_attempts=$((_preflight_attempts + 1))
+        log_info "Waiting for Gitea HTTPS to be reachable (${_preflight_attempts}/15)..."
+        sleep 2
+    done
+    if [[ "$_gitea_https_ok" != "true" ]]; then
+        log_warn "Gitea HTTPS not reachable via ${GITEA_DOMAIN} — git push may fail"
     fi
 
     # Phase 1: Push git repos from tar.gz files
@@ -267,30 +509,48 @@ import_templates() {
                 -d "{\"name\":\"${repo_name}\",\"auto_init\":false,\"default_branch\":\"main\"}" >/dev/null
         fi
 
-        # Extract and push
+        # Extract and push (with retry)
         local tmp_dir
         tmp_dir=$(mktemp -d)
         tar xzf "$tar_file" -C "$tmp_dir" --strip-components=1 2>/dev/null || tar xzf "$tar_file" -C "$tmp_dir"
 
-        (
-            cd "$tmp_dir"
-            git init -b main >/dev/null 2>&1
-            git add -A >/dev/null 2>&1
-            git commit -m "Initial import" --author="Launchpad <launchpad@${DOMAIN}>" >/dev/null 2>&1
+        local _push_ok=false
+        local _push_attempt=0
+        while [[ $_push_attempt -lt 3 ]]; do
+            _push_attempt=$((_push_attempt + 1))
+            (
+                trap - EXIT  # Clear inherited /dev/tty trap from common.sh
+                cd "$tmp_dir"
+                export GIT_AUTHOR_NAME="Launchpad" GIT_AUTHOR_EMAIL="launchpad@${DOMAIN}"
+                export GIT_COMMITTER_NAME="Launchpad" GIT_COMMITTER_EMAIL="launchpad@${DOMAIN}"
+                # Only init on first attempt
+                if [[ ! -d .git ]]; then
+                    git init -b main >/dev/null 2>&1
+                    git add -A >/dev/null 2>&1
+                    git commit -m "Initial import" >/dev/null 2>&1
+                fi
 
-            local remote_url="https://${gitea_admin}:${gitea_pass}@${GITEA_DOMAIN}/launchpad/${repo_name}.git"
-            if [[ "${SSL_MODE}" == "selfsigned" ]]; then
-                GIT_SSL_NO_VERIFY=1 git push -f "$remote_url" main >/dev/null 2>&1
-            else
-                git push -f "$remote_url" main >/dev/null 2>&1
-            fi
-        )
+                remote_url="https://${gitea_admin}:${gitea_pass}@${GITEA_DOMAIN}/launchpad/${repo_name}.git"
+                if [[ "${SSL_MODE}" == "selfsigned" ]]; then
+                    GIT_SSL_NO_VERIFY=1 git push -f "$remote_url" main >/dev/null 2>&1
+                else
+                    git push -f "$remote_url" main >/dev/null 2>&1
+                fi
+            ) && _push_ok=true
+            [[ "$_push_ok" == "true" ]] && break
+            log_warn "Git push failed for ${repo_name} (attempt ${_push_attempt}/3), retrying in 3s..."
+            sleep 3
+        done
         rm -rf "$tmp_dir"
 
-        log_ok "$MSG_DEPLOY_TEMPLATES_REPO ${repo_name}"
+        if [[ "$_push_ok" == "true" ]]; then
+            log_ok "$MSG_DEPLOY_TEMPLATES_REPO ${repo_name}"
+        else
+            log_warn "$MSG_DEPLOY_TEMPLATES_REPO ${repo_name} — push failed after 3 attempts"
+        fi
     done
 
-    # Phase 2: Import YAML templates via API
+    # Phase 2: Import YAML templates via admin API (port 6804, no auth required)
     local yaml_file yaml_content
     for yaml_file in "$files_dir"/*.yaml; do
         [[ -f "$yaml_file" ]] || continue
@@ -305,26 +565,31 @@ import_templates() {
         json_yaml=$(printf '%s' "$yaml_content" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
             || printf '%s' "$yaml_content" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
 
-        # Validate
+        # Validate via admin API (no auth needed)
         local validate_resp
         validate_resp=$(docker compose -f "$compose_file" exec -T api \
-            curl -s -X POST "${api_base}/api/v1/templates/validate-yaml" \
-            -H "Content-Type: application/json" \
-            -d "{\"yaml\": ${json_yaml}}" 2>/dev/null)
+            wget -q -O- --post-data="{\"yaml\": ${json_yaml}}" \
+            --header="Content-Type: application/json" \
+            "${admin_base}/api/templates/yaml/validate" 2>&1 || echo "WGET_FAILED")
 
-        if echo "$validate_resp" | grep -qi "error\|invalid"; then
+        if [[ "$validate_resp" == "WGET_FAILED" ]]; then
+            log_warn "$MSG_DEPLOY_TEMPLATES_YAML ${template_name} — validation request failed"
+            continue
+        fi
+        # Check if valid:false or errors array is non-empty
+        if echo "$validate_resp" | grep -q '"valid":false'; then
             log_warn "$MSG_DEPLOY_TEMPLATES_YAML ${template_name} — validation failed: $validate_resp"
             continue
         fi
 
-        # Import
+        # Import via admin API
         local import_resp
         import_resp=$(docker compose -f "$compose_file" exec -T api \
-            curl -s -X POST "${api_base}/api/v1/templates/from-yaml" \
-            -H "Content-Type: application/json" \
-            -d "{\"yaml\": ${json_yaml}}" 2>/dev/null)
+            wget -q -O- --post-data="{\"yaml\": ${json_yaml}, \"isOfficial\": true}" \
+            --header="Content-Type: application/json" \
+            "${admin_base}/api/templates/yaml/create" 2>&1 || echo "WGET_FAILED")
 
-        if echo "$import_resp" | grep -qi "error"; then
+        if [[ "$import_resp" == "WGET_FAILED" ]] || echo "$import_resp" | grep -q '"success":false'; then
             log_warn "$MSG_DEPLOY_TEMPLATES_YAML ${template_name} — import failed: $import_resp"
         else
             log_ok "$MSG_DEPLOY_TEMPLATES_YAML ${template_name}"
@@ -338,40 +603,85 @@ show_result() {
     local ip
     ip=$(detect_internal_ip 2>/dev/null || echo "x.x.x.x")
 
-    echo ""
-    echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BOLD}  ✓ $MSG_DEPLOY_COMPLETE${NC}"
-    echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
-    echo ""
-    echo "  $MSG_OUT_URLS:"
-    echo "    $MSG_OUT_DASHBOARD:  https://${LAUNCHPAD_DOMAIN}"
-    echo "    $MSG_OUT_GITEA:      https://${GITEA_DOMAIN}"
-    echo "    $MSG_OUT_ADMIN:      https://${LAUNCHPAD_DOMAIN}/admin"
-    echo ""
-    echo "  $MSG_OUT_CREDENTIALS:"
-    echo "    $MSG_OUT_EMAIL:      ${ADMIN_EMAIL}"
-    echo "    $MSG_OUT_PASSWORD:   ${ADMIN_PASSWORD}"
-    echo ""
-    echo "  $MSG_OUT_K8S:"
-    echo "    $MSG_OUT_MODE:       ${K8S_MODE}"
-    if [[ "${CLUSTER_REGISTERED:-false}" == "true" ]]; then
-        echo "    $MSG_OUT_STATUS:     ✓ Registered"
-    else
-        echo -e "    $MSG_OUT_STATUS:     ${YELLOW}⚠ Not registered${NC}"
-        echo "    Register manually:   ./deploy/setup.sh --resume"
+    # Detect tty — use Style C if available, otherwise plain stdout
+    local _has_tty=false
+    if [ -t 1 ] || (echo -n "" >/dev/tty 2>/dev/null); then
+        _has_tty=true
     fi
-    echo ""
-    echo "  $MSG_OUT_DNS:"
-    echo "    $MSG_OUT_DNS_MSG ($ip):"
-    echo "    ├─ ${LAUNCHPAD_DOMAIN}  → $ip"
-    echo "    ├─ ${GITEA_DOMAIN}      → $ip"
-    echo "    └─ *.${DOMAIN}          → $ip"
-    echo ""
-    echo "  $MSG_OUT_CONFIG: deploy/generated/"
-    echo "  $MSG_OUT_LOGS: docker compose -f deploy/generated/docker-compose.yml logs -f"
-    echo "  $MSG_OUT_RECONFIG: ./deploy/setup.sh --reconfigure"
-    echo ""
-    echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
+
+    if [[ "$_has_tty" == "true" ]]; then
+        clear >/dev/tty 2>/dev/null || true
+        print_brand_header "${GREEN}${BOLD}✓ $MSG_DEPLOY_COMPLETE${NC}"
+
+        printf "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n" >/dev/tty
+
+        print_accent_block green "$MSG_OUT_URLS" \
+            "${DIM}$MSG_OUT_DASHBOARD  https://${LAUNCHPAD_DOMAIN}${NC}" \
+            "${DIM}$MSG_OUT_GITEA      https://${GITEA_DOMAIN}${NC}" \
+            "${DIM}$MSG_OUT_ADMIN      https://${LAUNCHPAD_DOMAIN}/admin${NC}"
+
+        print_accent_block red "$MSG_OUT_CREDENTIALS" \
+            "${DIM}$MSG_OUT_EMAIL      ${ADMIN_EMAIL}${NC}" \
+            "${DIM}$MSG_OUT_PASSWORD   ${ADMIN_PASSWORD}${NC}"
+
+        local k8s_status
+        if [[ "${CLUSTER_REGISTERED:-false}" == "true" ]]; then
+            k8s_status="${GREEN}✓${NC} ${DIM}Registered${NC}"
+        else
+            k8s_status="${YELLOW}⚠ Not registered${NC}"
+        fi
+        print_accent_block blue "$MSG_OUT_K8S" \
+            "${DIM}$MSG_OUT_MODE       ${K8S_MODE}${NC}" \
+            "$k8s_status"
+
+        print_accent_block yellow "$MSG_OUT_DNS" \
+            "${DIM}$MSG_OUT_DNS_MSG ($ip):${NC}" \
+            "${DIM}├─ ${LAUNCHPAD_DOMAIN}${NC}" \
+            "${DIM}├─ ${GITEA_DOMAIN}${NC}" \
+            "${DIM}└─ *.${DOMAIN}${NC}"
+
+        echo "" >/dev/tty
+        printf "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n" >/dev/tty
+        printf "  ${DIM}$MSG_OUT_CONFIG:  generated/${NC}\n" >/dev/tty
+        printf "  ${DIM}$MSG_OUT_LOGS:    docker compose -f generated/docker-compose.yml logs -f${NC}\n" >/dev/tty
+        printf "  ${DIM}$MSG_OUT_RECONFIG:  ./setup.sh --reconfigure${NC}\n" >/dev/tty
+        printf "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n" >/dev/tty
+    else
+        # Fallback: plain stdout (for non-interactive/SSH/--config mode)
+        echo ""
+        echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
+        echo -e "${BOLD}  ✓ $MSG_DEPLOY_COMPLETE${NC}"
+        echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
+        echo ""
+        echo "  $MSG_OUT_URLS:"
+        echo "    $MSG_OUT_DASHBOARD:  https://${LAUNCHPAD_DOMAIN}"
+        echo "    $MSG_OUT_GITEA:      https://${GITEA_DOMAIN}"
+        echo "    $MSG_OUT_ADMIN:      https://${LAUNCHPAD_DOMAIN}/admin"
+        echo ""
+        echo "  $MSG_OUT_CREDENTIALS:"
+        echo "    $MSG_OUT_EMAIL:      ${ADMIN_EMAIL}"
+        echo "    $MSG_OUT_PASSWORD:   ${ADMIN_PASSWORD}"
+        echo ""
+        echo "  $MSG_OUT_K8S:"
+        echo "    $MSG_OUT_MODE:       ${K8S_MODE}"
+        if [[ "${CLUSTER_REGISTERED:-false}" == "true" ]]; then
+            echo "    $MSG_OUT_STATUS:     ✓ Registered"
+        else
+            echo -e "    $MSG_OUT_STATUS:     ${YELLOW}⚠ Not registered${NC}"
+        fi
+        echo ""
+        echo "  $MSG_OUT_DNS:"
+        echo "    $MSG_OUT_DNS_MSG ($ip):"
+        echo "    ├─ ${LAUNCHPAD_DOMAIN}  → $ip"
+        echo "    ├─ ${GITEA_DOMAIN}      → $ip"
+        echo "    └─ *.${DOMAIN}          → $ip"
+        echo ""
+        echo "  $MSG_OUT_CONFIG: deploy/generated/"
+        echo "  $MSG_OUT_LOGS: docker compose -f deploy/generated/docker-compose.yml logs -f"
+        echo "  $MSG_OUT_RECONFIG: ./deploy/setup.sh --reconfigure"
+        echo ""
+        echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
+    fi
 }
 
 show_status() {
@@ -395,7 +705,8 @@ upgrade_services() {
     render_compose
     log_info "Pulling latest images..."
     docker compose -f "$compose_file" pull
-    docker compose -f "$compose_file" up -d
+    docker compose -f "$compose_file" up -d --force-recreate
+    docker compose -f "$compose_file" restart nginx
     wait_for_healthy api 60
     wait_for_healthy ui 30
     wait_for_healthy nginx 15
@@ -422,8 +733,19 @@ uninstall_all() {
 
     log_warn "$MSG_UNINSTALL_ALL_WARN"
     echo ""
-    if ! ask_confirm "$MSG_UNINSTALL_ALL_CONFIRM" "N"; then
-        return 0
+    # Skip confirmation if no tty (non-interactive / piped input)
+    if [ -t 0 ] || [ -t 1 ]; then
+        if ! ask_confirm "$MSG_UNINSTALL_ALL_CONFIRM" "N"; then
+            return 0
+        fi
+    else
+        # Non-interactive: require "Y" on stdin
+        local answer
+        read -r answer 2>/dev/null || answer=""
+        if [[ ! "$answer" =~ ^[Yy] ]]; then
+            log_warn "Non-interactive mode: pass 'Y' on stdin to confirm"
+            return 0
+        fi
     fi
 
     # Step 1: Stop services and remove volumes
@@ -448,6 +770,13 @@ uninstall_all() {
             /usr/local/bin/k3s-uninstall.sh 2>/dev/null || true
             log_ok "k3s uninstalled"
         fi
+    fi
+
+    # Step 3b: Remove dnsmasq launchpad config
+    if [[ -f /etc/dnsmasq.d/launchpad.conf ]]; then
+        rm -f /etc/dnsmasq.d/launchpad.conf
+        systemctl restart dnsmasq 2>/dev/null || true
+        log_ok "dnsmasq config removed"
     fi
 
     # Step 4: Remove generated directory
@@ -479,81 +808,19 @@ restart_service() {
     log_done "Restarted: $target"
 }
 
-resume_deploy() {
+# Recreate services to reload .env files, then restart nginx to refresh DNS cache.
+# Usage: recreate_services service1 [service2 ...]
+recreate_services() {
     local compose_file="${DEPLOY_DIR}/generated/docker-compose.yml"
     if [[ ! -f "$compose_file" ]]; then
-        log_error "No deployment configuration found. Run ./deploy/setup.sh first."
+        log_error "No deployment found. Run ./setup.sh first."
         exit 1
     fi
-
-    # Load saved config, secrets, and all modules
-    source "${DEPLOY_DIR}/scripts/lib/common.sh"
-    source "${DEPLOY_DIR}/scripts/lib/detect.sh"
-    source "${DEPLOY_DIR}/scripts/lib/secrets.sh"
-    source "${DEPLOY_DIR}/scripts/lib/render.sh"
-    source "${DEPLOY_DIR}/scripts/lib/database.sh"
-    source "${DEPLOY_DIR}/scripts/lib/k3s.sh"
-    source "${DEPLOY_DIR}/versions.conf"
-    source "${DEPLOY_DIR}/generated/.setup.conf"
-    source "${DEPLOY_DIR}/scripts/lang/${LANG_CHOICE:-en}.sh"
-    load_secrets || { log_error "Cannot load secrets. Run ./deploy/setup.sh to redeploy."; exit 1; }
-
-    log_info "Checking deployment state and resuming from failed phase..."
-
-    # Helper to check if a service is already healthy
-    is_healthy() {
-        local cid
-        cid=$(docker compose -f "$compose_file" ps -q "$1" 2>/dev/null | head -1)
-        [[ -n "$cid" ]] && [[ "$(docker inspect --format='{{.State.Health.Status}}' "$cid" 2>/dev/null)" == "healthy" ]]
-    }
-
-    # Phase 1: Infrastructure
-    if [[ "$DB_MODE" == "builtin" ]]; then
-        if ! is_healthy postgres || ! is_healthy redis; then
-            log_step "1/4" "$MSG_DEPLOY_INFRA"
-            docker compose -f "$compose_file" up -d postgres redis
-            wait_for_healthy postgres 30 || deploy_fail "infrastructure (postgres)"
-            wait_for_healthy redis 15 || deploy_fail "infrastructure (redis)"
-        else
-            log_ok "Infrastructure already healthy — skipping"
-        fi
-    fi
-
-    # Phase 2: Database init (idempotent, safe to re-run)
-    init_database
-
-    # Phase 3: Application services
-    if ! is_healthy api || ! is_healthy ui || ! is_healthy router; then
-        log_step "2/4" "$MSG_DEPLOY_SERVICES"
-        docker compose -f "$compose_file" up -d api ui router cron backup-worker gateway gitea
-        wait_for_healthy api 60 || deploy_fail "application services (api)"
-        wait_for_healthy ui 30 || deploy_fail "application services (ui)"
-        wait_for_healthy router 30 || deploy_fail "application services (router)"
-        wait_for_healthy gitea 45 || deploy_fail "application services (gitea)"
-    else
-        log_ok "Application services already healthy — skipping"
-    fi
-
-    # Phase 4: Nginx
-    if ! is_healthy nginx; then
-        log_step "3/4" "$MSG_DEPLOY_NGINX"
-        docker compose -f "$compose_file" up -d nginx
-        wait_for_healthy nginx 30 || deploy_fail "nginx"
-    else
-        log_ok "Nginx already healthy — skipping"
-    fi
-
-    # Phase 5: Gitea bootstrap (idempotent)
-    bootstrap_gitea
-
-    # Phase 5b: Template import (idempotent)
-    import_templates || log_warn "Template import failed — retry with: ./setup.sh --import-templates"
-
-    setup_hosts
-
-    # Phase 6: Cluster registration
-    register_cluster || log_warn "Cluster registration failed — you can retry later"
-
-    log_done "All services healthy"
-    show_result
+    docker compose -f "$compose_file" up -d --force-recreate "$@"
+    docker compose -f "$compose_file" restart nginx
+    for svc in "$@"; do
+        wait_for_healthy "$svc" 60 || true
+    done
+    log_done "Recreated: $* (nginx restarted)"
 }
+
