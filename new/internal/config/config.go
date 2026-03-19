@@ -2,6 +2,8 @@
 // AniLaunchpad deployments.
 package config
 
+//go:generate go run ../../cmd/gen-versions/main.go -input ../../../deploy/versions.conf -output versions_gen.go
+
 // Config holds all user-configurable options for an AniLaunchpad deployment.
 type Config struct {
 	Domain      string         `yaml:"domain" validate:"required,fqdn"`
@@ -118,8 +120,8 @@ func DefaultConfig(domain, adminEmail string) *Config {
 		Subdomain:  "launchpad",
 		AdminEmail: adminEmail,
 		Images: ImageConfig{
-			Registry:       "swr.ap-southeast-1.myhuaweicloud.com/ghisha",
-			DefaultVersion: "2.0.3",
+			Registry:       DefaultImageRegistry,
+			DefaultVersion: DefaultImageVersion,
 		},
 		SSL: SSLConfig{
 			Mode: "selfsigned",
