@@ -35,6 +35,8 @@ For `--resume` runs, the first line uses `[RESUME]` instead of `[START]`:
 [2026-03-19T14:40:01+08:00] [RESUME] deploy v1.0 — K8S_MODE=builtin SSL_MODE=selfsigned DB_MODE=builtin
 ```
 
+**Resume detection:** `setup.sh` already sets `ACTION="resume"` for `--resume`. `deploy_services()` checks `${ACTION:-}` to decide `[START]` vs `[RESUME]`.
+
 **Implementation:**
 
 1. Add `deploy_log()` function to `common.sh`:
@@ -44,6 +46,7 @@ For `--resume` runs, the first line uses `[RESUME]` instead of `[START]`:
 
 2. Call sites in `deploy.sh`:
    - `deploy_services()` start: `[START]` or `[RESUME]` line with config summary
+   - `_update_step` when status becomes "active": emit `[PHASE] <key> — started` via `deploy_log`
    - `_complete_step`: `[OK] <key> — <elapsed>s`
    - `_fail_with_cursor`: `[FAIL] <key> — <elapsed>s — <reason>` + partial timing summary (before calling `deploy_fail` which exits)
    - `deploy_services()` end: `[END]` line with total elapsed and status
@@ -52,28 +55,31 @@ For `--resume` runs, the first line uses `[RESUME]` instead of `[START]`:
 
 Track start/end time for each deployment step and display a summary table after deployment completes (or on failure).
 
-**Data structures — all declared at file scope (before `deploy_services`):**
+**Data structures — all at file scope (before `deploy_services`):**
 
 ```bash
-declare -A _ds_start_times   # step key → epoch seconds
-declare -A _ds_key_by_idx    # step index → step key (reverse lookup)
-_ds_elapsed=()               # step index → elapsed seconds (parallel to _ds_steps)
-_deploy_start_time=0         # overall deploy start
+# Move existing _ds_step_map to file scope alongside new timing arrays.
+# This enables deploy_fail() and _print_timing_summary() to access them.
+declare -A _ds_step_map       # step key → array index (EXISTING, moved from inside deploy_services)
+declare -A _ds_start_times    # step key → epoch seconds (NEW)
+declare -A _ds_key_by_idx     # step index → step key, reverse of _ds_step_map (NEW)
+_ds_elapsed=()                # step index → elapsed seconds, parallel to _ds_steps (NEW)
+_deploy_start_time=0          # overall deploy start epoch (NEW)
 ```
 
-These are file-scope globals so both `deploy_services()` inner functions and `deploy_fail()` can access them.
+Moving `_ds_step_map` out of `deploy_services()` to file scope ensures all timing-related data is globally accessible. The existing `_ds_steps` array (index → `status:pct:label`) and `_ds_idx` counter also move to file scope for consistency.
 
 **Timing integration:**
 
-- `_add_step`: populate `_ds_key_by_idx[idx]=key` for reverse lookup
-- When a step transitions to "active" (inside `_update_step`): if status is `"active"` and no start time recorded yet, record `$(date +%s)` in `_ds_start_times[$key]`
-- `_complete_step`: compute `elapsed = $(date +%s) - _ds_start_times[$key]`, store in `_ds_elapsed[$idx]`, call `deploy_log "[OK] $key — ${elapsed}s"`
-- `_fail_with_cursor`: compute elapsed for the failed step, call `deploy_log "[FAIL] ..."`, print partial timing summary, then call `deploy_fail`
+- `_add_step`: populate `_ds_key_by_idx[$idx]=$key` for reverse lookup; initialize `_ds_elapsed[$idx]=0`
+- `_update_step`: when status arg is `"active"` and `_ds_start_times[$key]` is unset, record `$(date +%s)` and emit `deploy_log "[PHASE] $key — started"`
+- `_complete_step` (both TTY and non-TTY paths): look up key via `_ds_key_by_idx[$idx]`, compute `elapsed = $(date +%s) - _ds_start_times[$key]`, store in `_ds_elapsed[$idx]`, call `deploy_log "[OK] $key — ${elapsed}s"`. The non-TTY `_complete_step` is redefined to include timing logic (currently it only calls `progress_update`).
+- `_fail_with_cursor`: look up current step's key, compute elapsed, call `deploy_log "[FAIL] ..."`, call `_print_timing_summary`, then call `deploy_fail`. **All failure paths MUST go through `_fail_with_cursor`**, never call `deploy_fail` directly from step code.
 
 **Summary table output:**
 
-Printed at two points:
-1. **On success:** after `deploy_services()` completes, before `show_result()`
+New function `_print_timing_summary()` iterates `_ds_steps` and `_ds_elapsed`, printing a table. Called at two points:
+1. **On success:** at end of `deploy_services()`, before returning
 2. **On failure:** inside `_fail_with_cursor`, before calling `deploy_fail` (which exits)
 
 TTY mode:
@@ -95,19 +101,21 @@ TTY mode:
 
 Non-TTY mode: same content, plain text (no color codes).
 
-**Helper function:** `_format_duration()` converts seconds to human-readable format:
+**Helper function:** `_format_duration()` in `common.sh` — converts seconds to human-readable format:
 - < 60s: `42s`
 - 60s–3599s: `2m18s`
 - >= 3600s: `1h5m`
+
+Placed in `common.sh` because it's a general utility (could be useful for other timing displays in the future).
 
 ## Files Changed
 
 | File | Change | Lines |
 |------|--------|-------|
-| `deploy/scripts/lib/common.sh` | Add `deploy_log()` and `_format_duration()` functions | ~15 |
-| `deploy/scripts/lib/deploy.sh` | Add timing arrays (file scope), update `_add_step`/`_complete_step`/`_fail_with_cursor`/`deploy_fail`, add `_print_timing_summary()` | ~60 |
+| `deploy/scripts/lib/common.sh` | Add `deploy_log()` and `_format_duration()` functions | ~20 |
+| `deploy/scripts/lib/deploy.sh` | Move `_ds_step_map`/`_ds_steps`/`_ds_idx` to file scope; add timing arrays; update `_add_step`/`_update_step`/`_complete_step` (both TTY and non-TTY)/`_fail_with_cursor`; add `_print_timing_summary()` | ~70 |
 
-Total: ~75 lines of new code, no existing behavior changed.
+Total: ~90 lines of new/modified code.
 
 ## Non-Goals
 
