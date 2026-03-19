@@ -9,6 +9,17 @@ func newRootCmd(version string) *cobra.Command {
 		Short:   "AniLaunchpad deployment tool",
 		Version: version,
 	}
+	cmd.AddCommand(
+		newInstallCmd(),
+		newConfigureCmd(),
+		newStatusCmd(),
+		newUpgradeCmd(),
+		newRestartCmd(),
+		newUninstallCmd(),
+		newSetupCertsCmd(),
+		newSetupDBCmd(),
+		newImportTemplatesCmd(),
+	)
 	return cmd
 }
 
