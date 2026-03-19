@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  # Specific domains → host IP (Docker nginx)
+  # These server blocks take priority over the wildcard because CoreDNS
+  # selects the most specific zone match first.
+  launchpad-specific.server: |
+    {{ .Config.Subdomain }}.{{ .Config.Domain }}:53 {{ .Config.Subdomain }}-gitea.{{ .Config.Domain }}:53 {
+        hosts {
+            {{ .Derived.HostIP }} {{ .Config.Subdomain }}.{{ .Config.Domain }}
+            {{ .Derived.HostIP }} {{ .Config.Subdomain }}-gitea.{{ .Config.Domain }}
+            ttl 60
+        }
+    }
+
+  # Wildcard subdomains → ingress-nginx ClusterIP (project pods)
+  wildcard.server: |
+    {{ .Config.Domain }}:53 {
+        hosts {
+            {{ .Runtime.IngressClusterIP }} {{ .Config.Domain }}
+            ttl 60
+            fallthrough
+        }
+        template IN A {
+            match ".*\.{{ .Derived.DomainEscaped }}\.$"
+            answer "{{ "{{" }} .Name {{ "}}" }} 60 IN A {{ .Runtime.IngressClusterIP }}"
+        }
+    }

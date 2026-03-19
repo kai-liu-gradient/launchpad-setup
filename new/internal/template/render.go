@@ -21,14 +21,14 @@ type RenderContext struct {
 
 // outputNameMap maps embedded template names to their rendered output names.
 var outputNameMap = map[string]string{
-	"env.tmpl":                    ".env",
-	"env.gateway.tmpl":            ".env.gateway",
-	"nginx.conf.tmpl":             "nginx.conf",
-	"settings.yml.tmpl":           "settings.yml",
-	"docker-compose.yml.tmpl":     "docker-compose.yml",
-	"coredns-custom.yaml.tmpl":    "coredns-custom.yaml",
-	"kyverno-inject-ca.yaml.tmpl": "kyverno-inject-ca.yaml",
-	"kyverno-sync-ca.yaml.tmpl":   "kyverno-sync-ca.yaml",
+	"env.tmpl":                ".env",
+	"env.gateway.tmpl":        ".env.gateway",
+	"nginx.conf.tmpl":         "nginx.conf",
+	"settings.yml.tmpl":       "settings.yml",
+	"docker-compose.yml.tmpl": "docker-compose.yml",
+	"coredns-custom.yaml.tmpl": "coredns-custom.yaml",
+	// Kyverno files are static (no .tmpl) — copied as-is by RenderAll.
+	// They contain Kyverno's own {{ }} syntax which would conflict with Go templates.
 }
 
 // RenderAll walks the embedded template files, renders .tmpl files with ctx,

@@ -4,6 +4,7 @@ package template
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gradient8/launchpad/internal/config"
 	"github.com/gradient8/launchpad/internal/secrets"
@@ -38,11 +39,13 @@ type DerivedValues struct {
 	NodeTLSReject  string // "0" if selfsigned, "" otherwise
 
 	// Paths / derived strings
-	CACertPath       string
-	RouterLocalURL   string // http://router:6580
-	GiteaGitSSH      string // git@{subdomain}-gitea.{domain}:2222
-	EntraRedirectURI string // https://{subdomain}.{domain}/api/v1/auth/microsoft/callback
+	CACertPath        string
+	RouterLocalURL    string // http://router:6580
+	GiteaGitSSH       string // git@{subdomain}-gitea.{domain}:2222
+	EntraRedirectURI  string // https://{subdomain}.{domain}/api/v1/auth/microsoft/callback
 	ANICodeReleaseURL string // https://{subdomain}-gitea.{domain}/launchpad/ani-code/archive/main.tar.gz
+	DomainEscaped     string // domain with dots escaped for regex (e.g. example\.com)
+	KubeconfigPath    string // resolved kubeconfig path for docker-compose volume mount
 }
 
 // ComputeDerived derives all template values from the given Config and Secrets.
@@ -95,6 +98,16 @@ func ComputeDerived(cfg *config.Config, sec *secrets.Secrets) *DerivedValues {
 	d.GiteaGitSSH = "git@" + giteaDomain + ":2222"
 	d.EntraRedirectURI = "https://" + launchpadDomain + "/api/v1/auth/microsoft/callback"
 	d.ANICodeReleaseURL = "https://" + giteaDomain + "/launchpad/ani-code/archive/main.tar.gz"
+	d.DomainEscaped = strings.ReplaceAll(cfg.Domain, ".", "\\.")
+
+	// Kubeconfig path
+	if cfg.Kubernetes.Mode == "builtin" {
+		d.KubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
+	} else if cfg.Kubernetes.Kubeconfig != "" {
+		d.KubeconfigPath = cfg.Kubernetes.Kubeconfig
+	} else {
+		d.KubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
+	}
 
 	return d
 }

@@ -5,20 +5,50 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gradient8/launchpad/internal/config"
+	"github.com/gradient8/launchpad/internal/secrets"
 )
 
-func TestRenderAll(t *testing.T) {
-	cfg := testConfig()
-	sec := testSecrets()
-	derived := ComputeDerived(cfg, sec)
-	runtime := &RuntimeValues{}
+func fixtureSecrets() *secrets.Secrets {
+	return &secrets.Secrets{
+		JWTSecret:                      "aaaa",
+		JWTRefreshSecret:               "bbbb",
+		SessionSecret:                  "cccc",
+		EncryptionKey:                  "dddd",
+		ClaudeCredentialsEncryptionKey: "eeee",
+		SSHKeyEncryptionSecret:         "ffff",
+		RSAPublicKey:                   "pub-key",
+		RSAPrivateKey:                  "priv-key",
+		DBPasswordMain:                 "pass-main",
+		DBPasswordMonitoring:           "pass-monitoring",
+		DBPasswordEvents:               "pass-events",
+		DBPasswordBilling:              "pass-billing",
+		DBPasswordStats:                "pass-stats",
+		DBPasswordGateway:              "pass-gateway",
+		DBPasswordGitea:                "pass-gitea",
+		PostgresSuperuserPassword:      "pass-super",
+		RedisPassword:                  "pass-redis",
+		GatewayAPIKey:                  "gw-key",
+		InternalSecret:                 "internal",
+		AdminPassword:                  "admin-pass",
+	}
+}
 
-	ctx := &RenderContext{
+func fixtureRenderContext() *RenderContext {
+	cfg := config.DefaultConfig("example.com", "admin@example.com")
+	sec := fixtureSecrets()
+	derived := ComputeDerived(cfg, sec)
+	return &RenderContext{
 		Config:  cfg,
 		Secrets: sec,
 		Derived: derived,
-		Runtime: runtime,
+		Runtime: &RuntimeValues{},
 	}
+}
+
+func TestRenderAll(t *testing.T) {
+	ctx := fixtureRenderContext()
 
 	outDir := t.TempDir()
 	if err := RenderAll(ctx, outDir); err != nil {
@@ -34,7 +64,7 @@ func TestRenderAll(t *testing.T) {
 
 	content := string(data)
 	if !strings.Contains(content, "DOMAIN=example.com") {
-		t.Error(".env should contain DOMAIN=example.com")
+		t.Error(".env should contain DOMAIN=example.com (found in INGRESS_DOMAIN or BASE_DOMAIN line)")
 	}
 	if !strings.Contains(content, "SSL_MODE=selfsigned") {
 		t.Error(".env should contain SSL_MODE=selfsigned")
@@ -42,19 +72,10 @@ func TestRenderAll(t *testing.T) {
 }
 
 func TestRenderAll_PreservesRuntime(t *testing.T) {
-	cfg := testConfig()
-	sec := testSecrets()
-	derived := ComputeDerived(cfg, sec)
-	runtime := &RuntimeValues{
+	ctx := fixtureRenderContext()
+	ctx.Runtime = &RuntimeValues{
 		GiteaAccessToken: "test-token-123",
 		GiteaUser:        "admin",
-	}
-
-	ctx := &RenderContext{
-		Config:  cfg,
-		Secrets: sec,
-		Derived: derived,
-		Runtime: runtime,
 	}
 
 	outDir := t.TempDir()
@@ -67,5 +88,213 @@ func TestRenderAll_PreservesRuntime(t *testing.T) {
 	content := string(data)
 	if !strings.Contains(content, "test-token-123") {
 		t.Error(".env should contain the runtime Gitea token")
+	}
+}
+
+func TestRenderAll_OutputFiles(t *testing.T) {
+	ctx := fixtureRenderContext()
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	expectedFiles := []string{
+		".env",
+		".env.gateway",
+		"nginx.conf",
+		"settings.yml",
+		"docker-compose.yml",
+		"coredns-custom.yaml",
+		"kyverno-inject-ca.yaml",
+		"kyverno-sync-ca.yaml",
+		"values-builtin.yml",
+		"crontab",
+	}
+	for _, f := range expectedFiles {
+		path := filepath.Join(outDir, f)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("expected output file %q not found", f)
+		}
+	}
+}
+
+func TestRenderCompose_BuiltinMode(t *testing.T) {
+	ctx := fixtureRenderContext()
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(outDir, "docker-compose.yml"))
+	content := string(got)
+
+	if !strings.Contains(content, "postgres:") {
+		t.Error("builtin mode should include postgres service")
+	}
+	if !strings.Contains(content, "redis:") {
+		t.Error("builtin mode should include redis service")
+	}
+	if !strings.Contains(content, "extra_hosts") {
+		t.Error("builtin K8s should include extra_hosts")
+	}
+	if !strings.Contains(content, "pass-super") {
+		t.Error("builtin mode should include postgres superuser password")
+	}
+	if !strings.Contains(content, "pass-redis") {
+		t.Error("builtin mode should include redis password")
+	}
+}
+
+func TestRenderCompose_ExternalMode(t *testing.T) {
+	ctx := fixtureRenderContext()
+	ctx.Config.Database.Mode = "external"
+	ctx.Config.Database.URLs = map[string]string{
+		"main":       "postgresql://ext:pass@exthost:5432/db?schema=main",
+		"monitoring": "postgresql://ext:pass@exthost:5432/db?schema=monitoring",
+		"events":     "postgresql://ext:pass@exthost:5432/db?schema=events",
+		"billing":    "postgresql://ext:pass@exthost:5432/db?schema=billing",
+		"stats":      "postgresql://ext:pass@exthost:5432/db?schema=stats",
+		"gateway":    "postgresql://ext:pass@exthost:5432/db?schema=gateway",
+	}
+	ctx.Config.Kubernetes.Mode = "external"
+	ctx.Config.SSL.Mode = "letsencrypt"
+	ctx.Derived = ComputeDerived(ctx.Config, ctx.Secrets)
+
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(outDir, "docker-compose.yml"))
+	content := string(got)
+
+	if strings.Contains(content, "  postgres:") {
+		t.Error("external DB should not include postgres service")
+	}
+	if strings.Contains(content, "extra_hosts") {
+		t.Error("external K8s should not include extra_hosts")
+	}
+	if strings.Contains(content, "NODE_EXTRA_CA_CERTS") {
+		t.Error("letsencrypt mode should not include NODE_EXTRA_CA_CERTS")
+	}
+}
+
+func TestRenderCompose_SelfsignedGateway(t *testing.T) {
+	ctx := fixtureRenderContext()
+	ctx.Config.SSL.Mode = "selfsigned"
+	ctx.Derived = ComputeDerived(ctx.Config, ctx.Secrets)
+
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(outDir, "docker-compose.yml"))
+	content := string(got)
+
+	if !strings.Contains(content, "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/launchpad-ca.pem") {
+		t.Error("selfsigned mode should include NODE_EXTRA_CA_CERTS for gateway")
+	}
+	if !strings.Contains(content, "ca.pem:/etc/ssl/certs/launchpad-ca.pem:ro") {
+		t.Error("selfsigned mode should mount CA cert into gateway")
+	}
+}
+
+func TestRenderNginx(t *testing.T) {
+	ctx := fixtureRenderContext()
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(outDir, "nginx.conf"))
+	content := string(got)
+
+	if !strings.Contains(content, "server_name launchpad.example.com;") {
+		t.Error("nginx.conf should contain the launchpad server_name")
+	}
+	if !strings.Contains(content, "server_name launchpad-gitea.example.com;") {
+		t.Error("nginx.conf should contain the gitea server_name")
+	}
+	if !strings.Contains(content, "server_name *.example.com;") {
+		t.Error("nginx.conf should contain the wildcard server_name")
+	}
+}
+
+func TestRenderSettings(t *testing.T) {
+	ctx := fixtureRenderContext()
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(outDir, "settings.yml"))
+	content := string(got)
+
+	if !strings.Contains(content, `"example.com"`) {
+		t.Error("settings.yml should contain the domain in allowedDomains")
+	}
+	if !strings.Contains(content, "admin@example.com") {
+		t.Error("settings.yml should contain the admin email")
+	}
+}
+
+func TestRenderGatewayEnv(t *testing.T) {
+	ctx := fixtureRenderContext()
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(outDir, ".env.gateway"))
+	content := string(got)
+
+	if !strings.Contains(content, "ALLOWED_API_KEYS=gw-key") {
+		t.Error(".env.gateway should contain the gateway API key")
+	}
+	if !strings.Contains(content, "LAUNCHPAD_INTERNAL_SECRET=internal") {
+		t.Error(".env.gateway should contain the internal secret")
+	}
+}
+
+func TestRenderCoreDNS(t *testing.T) {
+	ctx := fixtureRenderContext()
+	ctx.Runtime.IngressClusterIP = "10.43.0.100"
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(outDir, "coredns-custom.yaml"))
+	content := string(got)
+
+	if !strings.Contains(content, "launchpad.example.com:53") {
+		t.Error("coredns should contain the launchpad domain")
+	}
+	if !strings.Contains(content, "10.43.0.100") {
+		t.Error("coredns should contain the ingress cluster IP")
+	}
+	// Verify CoreDNS template syntax is preserved (escaped {{ .Name }})
+	if !strings.Contains(content, "{{ .Name }}") {
+		t.Error("coredns should preserve the CoreDNS {{ .Name }} template syntax")
+	}
+	if !strings.Contains(content, `example\.com`) {
+		t.Error("coredns should contain the escaped domain for regex")
+	}
+}
+
+func TestRenderKyvernoStaticCopy(t *testing.T) {
+	ctx := fixtureRenderContext()
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	// Kyverno files should be copied as-is with their {{ }} syntax preserved
+	got, _ := os.ReadFile(filepath.Join(outDir, "kyverno-sync-ca.yaml"))
+	content := string(got)
+
+	if !strings.Contains(content, "{{request.object.metadata.name}}") {
+		t.Error("kyverno-sync-ca.yaml should preserve Kyverno template syntax")
 	}
 }
