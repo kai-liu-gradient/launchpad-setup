@@ -1,6 +1,12 @@
 package engine
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
 
 // BuildStepList returns the ordered list of deployment steps based on the
 // current configuration. Steps are conditionally included based on modes.
@@ -80,21 +86,6 @@ func (e *Engine) BuildStepList() []Step {
 
 func (e *Engine) preflightCheck(_ context.Context) error      { return nil }
 func (e *Engine) installK3s(_ context.Context) error          { return nil }
-func (e *Engine) generateCerts(_ context.Context) error       { return nil }
 func (e *Engine) installIngressNginx(_ context.Context) error { return nil }
 func (e *Engine) configureCoreDNS(_ context.Context) error    { return nil }
 func (e *Engine) setupKyverno(_ context.Context) error        { return nil }
-func (e *Engine) startPostgres(_ context.Context) error       { return nil }
-func (e *Engine) startRedis(_ context.Context) error          { return nil }
-func (e *Engine) initDatabases(_ context.Context) error       { return nil }
-func (e *Engine) startGitea(_ context.Context) error          { return nil }
-func (e *Engine) bootstrapGitea(_ context.Context) error      { return nil }
-func (e *Engine) startAppServices(_ context.Context) error    { return nil }
-func (e *Engine) waitForAPIHealth(_ context.Context) error    { return nil }
-func (e *Engine) waitForUIHealth(_ context.Context) error     { return nil }
-func (e *Engine) waitForRouterHealth(_ context.Context) error { return nil }
-func (e *Engine) startNginx(_ context.Context) error          { return nil }
-func (e *Engine) importTemplates(_ context.Context) error     { return nil }
-func (e *Engine) registerCluster(_ context.Context) error     { return nil }
-func (e *Engine) configureEtcHosts(_ context.Context) error   { return nil }
-func (e *Engine) configureDnsmasq(_ context.Context) error    { return nil }
