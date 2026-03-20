@@ -5,9 +5,8 @@ import (
 	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/huh"
 	"github.com/gradient8/launchpad/internal/settings"
+	"github.com/gradient8/launchpad/internal/tui/components"
 	settingsui "github.com/gradient8/launchpad/internal/tui/settings"
 	"github.com/spf13/cobra"
 )
@@ -54,9 +53,7 @@ func runSettings(dir string) error {
 			}
 			tab := m.Tabs[tabIdx]
 			form := tab.Form()
-			km := huh.NewDefaultKeyMap()
-			km.Quit = key.NewBinding(key.WithKeys("ctrl+c", "esc"))
-			form.WithKeyMap(km).WithProgramOptions(tea.WithAltScreen())
+			form.WithKeyMap(components.FormKeyMap()).WithProgramOptions(tea.WithAltScreen())
 			if err := form.Run(); err == nil {
 				tab.Apply(s)
 				if saveErr := settings.Save(s, settingsPath); saveErr != nil {

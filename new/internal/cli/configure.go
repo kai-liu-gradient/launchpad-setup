@@ -7,12 +7,11 @@ import (
 	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/huh"
 	"github.com/gradient8/launchpad/internal/config"
 	"github.com/gradient8/launchpad/internal/engine"
 	"github.com/gradient8/launchpad/internal/secrets"
 	"github.com/gradient8/launchpad/internal/template"
+	"github.com/gradient8/launchpad/internal/tui/components"
 	"github.com/gradient8/launchpad/internal/tui/panel"
 	"github.com/gradient8/launchpad/internal/tui/progress"
 	"github.com/spf13/cobra"
@@ -70,10 +69,7 @@ func runConfigure(dir string) error {
 			tabIdx := m.EditTabIndex()
 			tab := m.Tabs[tabIdx]
 			form := tab.Form()
-			// Add Esc key to quit the form (default only has ctrl+c)
-			km := huh.NewDefaultKeyMap()
-			km.Quit = key.NewBinding(key.WithKeys("ctrl+c", "esc"))
-			form.WithKeyMap(km).WithProgramOptions(tea.WithAltScreen())
+			form.WithKeyMap(components.FormKeyMap()).WithProgramOptions(tea.WithAltScreen())
 			if err := form.Run(); err == nil {
 				tab.Apply(cfg)
 			}
