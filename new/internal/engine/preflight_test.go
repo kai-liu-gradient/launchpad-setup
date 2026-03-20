@@ -7,7 +7,7 @@ import (
 )
 
 func TestPreflightChecks_BuiltinSkipsKubectlHelm(t *testing.T) {
-	cfg := config.DefaultConfig("example.com", "admin@example.com")
+	cfg := config.DefaultConfig("example.com")
 	cfg.Kubernetes.Mode = "builtin"
 	checks := RequiredTools(cfg)
 
@@ -31,7 +31,7 @@ func TestPreflightChecks_BuiltinSkipsKubectlHelm(t *testing.T) {
 }
 
 func TestPreflightChecks_ExternalRequiresKubectlHelm(t *testing.T) {
-	cfg := config.DefaultConfig("example.com", "admin@example.com")
+	cfg := config.DefaultConfig("example.com")
 	cfg.Kubernetes.Mode = "external"
 	checks := RequiredTools(cfg)
 

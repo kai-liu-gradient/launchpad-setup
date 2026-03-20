@@ -22,6 +22,7 @@ type ToolCheck struct {
 func RequiredTools(cfg *config.Config) []ToolCheck {
 	checks := []ToolCheck{
 		{Name: "docker", Required: true, CheckCmd: "docker", CheckArgs: []string{"--version"}},
+		{Name: "docker compose", Required: true, CheckCmd: "docker", CheckArgs: []string{"compose", "version"}},
 		{Name: "curl", Required: true, CheckCmd: "curl", CheckArgs: []string{"--version"}},
 	}
 

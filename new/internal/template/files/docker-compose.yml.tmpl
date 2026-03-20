@@ -109,7 +109,7 @@ services:
     platform: linux/amd64
     restart: unless-stopped
     deploy:
-      replicas: 1
+      replicas: {{ .Config.Performance.RouterReplicas }}
       update_config:
         order: start-first
         parallelism: 1

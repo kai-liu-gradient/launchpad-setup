@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gradient8/launchpad/internal/config"
+	"github.com/gradient8/launchpad/internal/engine"
 	"github.com/spf13/cobra"
 )
 
@@ -35,15 +36,18 @@ func newUninstallCmd() *cobra.Command {
 
 func runUninstall(dir string, all bool) error {
 	cfgPath := filepath.Join(dir, ".setup.yaml")
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		return fmt.Errorf("loading config from %s: %w", cfgPath, err)
-	}
+	cfg, _ := config.Load(cfgPath) // nil if not found — that's ok
 
 	// Confirmation prompt
 	scope := "stop and remove all services"
 	if all {
-		scope = "COMPLETELY remove AniLaunchpad including K3s, host configuration, and install directory"
+		scope = "COMPLETELY remove AniLaunchpad including K3s, host configuration, and all generated files"
+	}
+
+	if cfg != nil && cfg.Domain != "" {
+		fmt.Printf("Installation found: %s\n", cfg.Domain)
+	} else {
+		fmt.Println("No .setup.yaml found — will clean up any remaining artifacts.")
 	}
 	fmt.Printf("This will %s.\n", scope)
 	fmt.Print("Are you sure? [y/N] ")
@@ -62,11 +66,14 @@ func runUninstall(dir string, all bool) error {
 	composePath := filepath.Join(dir, "generated", "docker-compose.yml")
 
 	// Basic: docker compose down
-	downCmd := exec.Command("docker", "compose", "-f", composePath, "down")
-	downCmd.Stdout = os.Stdout
-	downCmd.Stderr = os.Stderr
-	if err := downCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: docker compose down failed: %v\n", err)
+	if _, err := os.Stat(composePath); err == nil {
+		fmt.Println("Stopping services...")
+		downCmd := exec.Command("docker", "compose", "-f", composePath, "down", "-v")
+		downCmd.Stdout = os.Stdout
+		downCmd.Stderr = os.Stderr
+		if err := downCmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: docker compose down failed: %v\n", err)
+		}
 	}
 
 	if !all {
@@ -86,58 +93,33 @@ func runUninstall(dir string, all bool) error {
 		}
 	}
 
-	// Remove /etc/hosts entries for this domain
-	if cfg.Domain != "" {
-		fmt.Printf("Removing /etc/hosts entries for %s...\n", cfg.Domain)
-		if err := removeHostsEntries(cfg.Domain, cfg.Subdomain); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: removing /etc/hosts entries failed: %v\n", err)
-		}
+	// Remove /etc/hosts entries (marker-based, works without config)
+	fmt.Println("Removing /etc/hosts entries...")
+	if err := engine.RemoveHostEntries(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: removing /etc/hosts entries: %v\n", err)
 	}
 
 	// Remove dnsmasq config
-	dnsmasqConf := fmt.Sprintf("/etc/dnsmasq.d/launchpad-%s.conf", cfg.Domain)
-	if _, err := os.Stat(dnsmasqConf); err == nil {
-		fmt.Printf("Removing dnsmasq config %s...\n", dnsmasqConf)
-		if err := os.Remove(dnsmasqConf); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: removing dnsmasq config failed: %v\n", err)
-		}
+	fmt.Println("Removing dnsmasq config...")
+	if err := engine.RemoveDnsmasq(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: removing dnsmasq config: %v\n", err)
 	}
 
-	// Remove install directory
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		absDir = dir
-	}
-	fmt.Printf("Removing install directory %s...\n", absDir)
-	if err := os.RemoveAll(absDir); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: removing install directory failed: %v\n", err)
+	// Remove CoreDNS custom config
+	fmt.Println("Removing CoreDNS custom config...")
+	exec.Command("kubectl", "delete", "configmap", "coredns-custom", "-n", "kube-system", "--ignore-not-found").Run() //nolint:errcheck
+	exec.Command("kubectl", "rollout", "restart", "deploy/coredns", "-n", "kube-system").Run()                        //nolint:errcheck
+
+	// Remove launchpad files from install directory
+	absDir, _ := filepath.Abs(dir)
+	fmt.Printf("Removing launchpad files from %s...\n", absDir)
+	for _, name := range []string{".setup.yaml", ".secrets.yaml", "generated"} {
+		target := filepath.Join(absDir, name)
+		if err := os.RemoveAll(target); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: removing %s failed: %v\n", target, err)
+		}
 	}
 
 	fmt.Println("Uninstall complete.")
-	return nil
-}
-
-// removeHostsEntries removes lines matching the domain from /etc/hosts.
-func removeHostsEntries(domain, subdomain string) error {
-	hostsPath := "/etc/hosts"
-	data, err := os.ReadFile(hostsPath)
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", hostsPath, err)
-	}
-
-	lines := strings.Split(string(data), "\n")
-	var kept []string
-	for _, line := range lines {
-		if strings.Contains(line, domain) || strings.Contains(line, subdomain+"."+domain) {
-			continue
-		}
-		kept = append(kept, line)
-	}
-
-	output := strings.Join(kept, "\n")
-	if err := os.WriteFile(hostsPath, []byte(output), 0644); err != nil {
-		return fmt.Errorf("writing %s: %w", hostsPath, err)
-	}
-
 	return nil
 }

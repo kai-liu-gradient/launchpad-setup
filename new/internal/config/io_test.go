@@ -9,7 +9,7 @@ func TestSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".setup.yaml")
 
-	original := DefaultConfig("example.com", "admin@example.com")
+	original := DefaultConfig("example.com")
 	original.SSL.Mode = "letsencrypt"
 	original.SSL.DNSProvider = "cloudflare"
 

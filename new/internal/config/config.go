@@ -124,17 +124,18 @@ type ExperimentalConfig struct {
 
 // PerfConfig holds performance tuning parameters.
 type PerfConfig struct {
-	APIReplicas int `yaml:"api_replicas"`
-	DBConnLimit int `yaml:"db_conn_limit"`
+	APIReplicas    int `yaml:"api_replicas"`
+	RouterReplicas int `yaml:"router_replicas"`
+	DBConnLimit    int `yaml:"db_conn_limit"`
 }
 
 // DefaultConfig returns a Config populated with sensible defaults for the
-// given domain and admin email.
-func DefaultConfig(domain, adminEmail string) *Config {
+// given domain. Admin email is auto-generated as admin@domain.
+func DefaultConfig(domain string) *Config {
 	return &Config{
 		Domain:     domain,
 		Subdomain:  "launchpad",
-		AdminEmail: adminEmail,
+		AdminEmail: "admin@" + domain,
 		Images: ImageConfig{
 			Registry:       DefaultImageRegistry,
 			DefaultVersion: DefaultImageVersion,
@@ -152,8 +153,9 @@ func DefaultConfig(domain, adminEmail string) *Config {
 			Mode: "local",
 		},
 		Performance: PerfConfig{
-			APIReplicas: 1,
-			DBConnLimit: 100,
+			APIReplicas:    1,
+			RouterReplicas: 1,
+			DBConnLimit:    100,
 		},
 	}
 }

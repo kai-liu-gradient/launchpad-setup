@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildStepList_BuiltinFull(t *testing.T) {
-	cfg := config.DefaultConfig("example.com", "admin@example.com")
+	cfg := config.DefaultConfig("example.com")
 	sec, _ := secrets.Generate()
 
 	e := New(cfg, sec, "/tmp/test-output", nil)
@@ -42,7 +42,7 @@ func TestBuildStepList_BuiltinFull(t *testing.T) {
 }
 
 func TestBuildStepList_ExternalSkipsK3s(t *testing.T) {
-	cfg := config.DefaultConfig("example.com", "admin@example.com")
+	cfg := config.DefaultConfig("example.com")
 	cfg.Kubernetes.Mode = "external"
 	cfg.SSL.Mode = "letsencrypt"
 	sec, _ := secrets.Generate()
@@ -61,7 +61,7 @@ func TestBuildStepList_ExternalSkipsK3s(t *testing.T) {
 }
 
 func TestDeploy_SendsEvents(t *testing.T) {
-	cfg := config.DefaultConfig("example.com", "admin@example.com")
+	cfg := config.DefaultConfig("example.com")
 	sec, _ := secrets.Generate()
 	events := make(chan StepEvent, 100)
 

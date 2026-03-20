@@ -47,68 +47,31 @@ func (t *CredentialsTab) Form() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Claude Included — Disable").
-				Description("Disable the Claude Included credential").
+				Title("Disable Claude Included").
 				Value(&t.ClaudeIncludedDisabled),
-		),
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Claude Included — Notice").
-				Description("Message shown when Claude Included is disabled").
-				Value(&t.ClaudeIncludedNotice),
-		).WithHideFunc(func() bool { return !t.ClaudeIncludedDisabled }),
-
-		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("ZAI Included — Disable").
-				Description("Disable the ZAI Included credential").
+				Title("Disable ZAI Included").
 				Value(&t.ZAIIncludedDisabled),
-		),
-		huh.NewGroup(
-			huh.NewInput().
-				Title("ZAI Included — Notice").
-				Description("Message shown when ZAI Included is disabled").
-				Value(&t.ZAIIncludedNotice),
-		).WithHideFunc(func() bool { return !t.ZAIIncludedDisabled }),
-
-		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Claude Paygo — Disable").
-				Description("Disable the Claude Paygo credential").
+				Title("Disable Claude PayGo").
 				Value(&t.ClaudePaygoDisabled),
-		),
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Claude Paygo — Notice").
-				Description("Message shown when Claude Paygo is disabled").
-				Value(&t.ClaudePaygoNotice),
-		).WithHideFunc(func() bool { return !t.ClaudePaygoDisabled }),
-
-		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("ZAI Paygo — Disable").
-				Description("Disable the ZAI Paygo credential").
+				Title("Disable ZAI PayGo").
 				Value(&t.ZAIPaygoDisabled),
-		),
-		huh.NewGroup(
-			huh.NewInput().
-				Title("ZAI Paygo — Notice").
-				Description("Message shown when ZAI Paygo is disabled").
-				Value(&t.ZAIPaygoNotice),
-		).WithHideFunc(func() bool { return !t.ZAIPaygoDisabled }),
-
-		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Gemini Paygo — Disable").
-				Description("Disable the Gemini Paygo credential").
+				Title("Disable Gemini PayGo").
 				Value(&t.GeminiPaygoDisabled),
 		),
 		huh.NewGroup(
-			huh.NewInput().
-				Title("Gemini Paygo — Notice").
-				Description("Message shown when Gemini Paygo is disabled").
-				Value(&t.GeminiPaygoNotice),
-		).WithHideFunc(func() bool { return !t.GeminiPaygoDisabled }),
+			huh.NewInput().Title("Claude Included — Disabled Notice").Value(&t.ClaudeIncludedNotice),
+			huh.NewInput().Title("ZAI Included — Disabled Notice").Value(&t.ZAIIncludedNotice),
+			huh.NewInput().Title("Claude PayGo — Disabled Notice").Value(&t.ClaudePaygoNotice),
+			huh.NewInput().Title("ZAI PayGo — Disabled Notice").Value(&t.ZAIPaygoNotice),
+			huh.NewInput().Title("Gemini PayGo — Disabled Notice").Value(&t.GeminiPaygoNotice),
+		).WithHideFunc(func() bool {
+			return !t.ClaudeIncludedDisabled && !t.ZAIIncludedDisabled &&
+				!t.ClaudePaygoDisabled && !t.ZAIPaygoDisabled && !t.GeminiPaygoDisabled
+		}),
 	)
 }
 

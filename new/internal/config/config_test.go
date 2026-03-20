@@ -3,7 +3,7 @@ package config
 import "testing"
 
 func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig("example.com", "admin@example.com")
+	cfg := DefaultConfig("example.com")
 	if cfg.Domain != "example.com" {
 		t.Errorf("Domain = %q, want %q", cfg.Domain, "example.com")
 	}

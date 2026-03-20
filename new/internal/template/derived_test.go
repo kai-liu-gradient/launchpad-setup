@@ -8,7 +8,7 @@ import (
 )
 
 func testConfig() *config.Config {
-	return config.DefaultConfig("example.com", "admin@example.com")
+	return config.DefaultConfig("example.com")
 }
 
 func testSecrets() *secrets.Secrets {

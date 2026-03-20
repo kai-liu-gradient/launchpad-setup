@@ -1,0 +1,53 @@
+template:
+  name: openclaw-launcher
+  slug: openclaw-launcher-86ec02
+  description: one click run openclaw
+  category: automation
+  tags:
+    - openclaw
+    - ai
+    - agent
+  base_image: node:24
+  icon: openclaw
+  system_user: node
+resources:
+  minimum_flavor:
+    flavor_id: standard-2cpu-4gb
+    enforce: true
+    allow_upgrade: true
+source:
+  type: git
+  url: $GITLAB_DOMAIN/launchpad/test-openclaw.git
+  branch: main
+cloud_init:
+  enabled: true
+  scripts:
+    - >-
+      root> bash -c 'd=/workspace/data/.openclaw;v=latest;[ -f $d/launcher.json ]&&[ -f $d/.installed-version ]&&grep -q
+      "\"upgradePolicy\"[[:space:]]*:[[:space:]]*\"manual\""
+      $d/launcher.json&&v=$(<$d/.installed-version);bun-link-global openclaw@$v openclaw'
+    - mkdir -p /workspace/data/.openclaw && ln -sf /workspace/data/.openclaw ~/
+  run_as: node
+  timeout: 300
+services:
+  - name: web
+    port: 3000
+    command: /usr/local/bin/npm start
+    ingress:
+      path_prefix: /
+    workspace_path: default
+  - name: openclaw-gateway
+    type: worker
+    command: openclaw gateway run
+    workspace_path: default
+init_stages:
+  - stage: install
+    steps:
+      - name: install-dependencies
+        command: npm install
+  - stage: services
+    steps:
+      - name: setup-web
+        command: echo "No build required"
+      - name: setup-openclaw-gateway
+        command: echo "No build required"

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gradient8/launchpad/internal/importfiles"
 )
 
 func (e *Engine) importTemplates(ctx context.Context) error {
@@ -29,20 +31,22 @@ func (e *Engine) importTemplates(ctx context.Context) error {
 	giteaDomain := e.cfg.Subdomain + "-gitea." + e.cfg.Domain
 	sslInsecure := e.cfg.SSL.Mode == "selfsigned"
 
-	// Find files directory (look in project root)
-	// The "files" directory contains .tar.gz repos and .yaml templates
-	filesDir := filepath.Join(filepath.Dir(e.output), "files")
-	if _, err := os.Stat(filesDir); os.IsNotExist(err) {
-		// Try parent directory
-		filesDir = filepath.Join(filepath.Dir(filepath.Dir(e.output)), "files")
-		if _, err := os.Stat(filesDir); os.IsNotExist(err) {
-			e.send(StepEvent{Step: "Importing templates", Status: Running, Detail: "No files directory"})
-			return nil
-		}
+	// Resolve template files: merge embedded (built into binary) with external files/ directory
+	filesDir, err := resolveTemplateFiles(importfiles.Files, e.output)
+	if err != nil {
+		return fmt.Errorf("resolving template files: %w", err)
+	}
+	defer os.RemoveAll(filesDir)
+
+	// Check if any files were resolved
+	tarFiles, _ := filepath.Glob(filepath.Join(filesDir, "*.tar.gz"))
+	yamlFiles, _ := filepath.Glob(filepath.Join(filesDir, "*.yaml"))
+	if len(tarFiles) == 0 && len(yamlFiles) == 0 {
+		e.send(StepEvent{Step: "Importing templates", Status: Running, Detail: "No template files found"})
+		return nil
 	}
 
 	// Phase 1: Push git repos from tar.gz files
-	tarFiles, _ := filepath.Glob(filepath.Join(filesDir, "*.tar.gz"))
 	for _, tarFile := range tarFiles {
 		repoName := strings.TrimSuffix(filepath.Base(tarFile), "-main.tar.gz")
 		e.send(StepEvent{Step: "Importing templates", Status: Running, Detail: "Repo: " + repoName})
@@ -114,7 +118,6 @@ func (e *Engine) importTemplates(ctx context.Context) error {
 	}
 
 	// Phase 2: Import YAML templates via admin API
-	yamlFiles, _ := filepath.Glob(filepath.Join(filesDir, "*.yaml"))
 	for _, yamlFile := range yamlFiles {
 		templateName := strings.TrimSuffix(filepath.Base(yamlFile), ".yaml")
 		e.send(StepEvent{Step: "Importing templates", Status: Running, Detail: "Template: " + templateName})
@@ -137,7 +140,7 @@ func (e *Engine) importTemplates(ctx context.Context) error {
 			"wget", "-q", "-O-",
 			"--post-data="+validatePayload,
 			"--header=Content-Type: application/json",
-			"http://localhost:6804/api/templates/yaml/validate")
+			"http://127.0.0.1:6804/api/templates/yaml/validate")
 
 		// Import as official template
 		importPayload := fmt.Sprintf(`{"yaml": %s, "isOfficial": true}`, string(jsonYAML))
@@ -145,7 +148,7 @@ func (e *Engine) importTemplates(ctx context.Context) error {
 			"wget", "-q", "-O-",
 			"--post-data="+importPayload,
 			"--header=Content-Type: application/json",
-			"http://localhost:6804/api/templates/yaml/create")
+			"http://127.0.0.1:6804/api/templates/yaml/create")
 	}
 
 	return nil

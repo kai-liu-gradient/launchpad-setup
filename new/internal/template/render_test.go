@@ -36,7 +36,7 @@ func fixtureSecrets() *secrets.Secrets {
 }
 
 func fixtureRenderContext() *RenderContext {
-	cfg := config.DefaultConfig("example.com", "admin@example.com")
+	cfg := config.DefaultConfig("example.com")
 	sec := fixtureSecrets()
 	derived := ComputeDerived(cfg, sec)
 	return &RenderContext{

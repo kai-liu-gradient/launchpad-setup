@@ -86,116 +86,56 @@ var severityOptions = []huh.Option[string]{
 
 func (t *NoticesTab) Form() *huh.Form {
 	return huh.NewForm(
-		// Project List
+		// Page 1: toggle all 4 notices on/off
 		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Project List Notice — Enabled").
+				Title("Enable Project List Notice").
 				Value(&t.ProjectListEnabled),
-		),
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Project List — Severity").
-				Options(severityOptions...).
-				Value(&t.ProjectListSeverity),
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Project List — Dismissible").
-				Value(&t.ProjectListDismissible),
-			huh.NewInput().
-				Title("Project List — Title").
-				Value(&t.ProjectListTitle),
-			huh.NewInput().
-				Title("Project List — Message").
-				Value(&t.ProjectListMessage),
-			huh.NewInput().
-				Title("Project List — Link URL").
-				Value(&t.ProjectListLinkURL),
-			huh.NewInput().
-				Title("Project List — Link Text").
-				Value(&t.ProjectListLinkText),
-		).WithHideFunc(func() bool { return !t.ProjectListEnabled }),
-
-		// Coding Agent
-		huh.NewGroup(
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Coding Agent Notice — Enabled").
+				Title("Enable Coding Agent Notice").
 				Value(&t.CodingAgentEnabled),
-		),
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Coding Agent — Severity").
-				Options(severityOptions...).
-				Value(&t.CodingAgentSeverity),
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Coding Agent — Dismissible").
-				Value(&t.CodingAgentDismissible),
-			huh.NewInput().
-				Title("Coding Agent — Title").
-				Value(&t.CodingAgentTitle),
-			huh.NewInput().
-				Title("Coding Agent — Message").
-				Value(&t.CodingAgentMessage),
-			huh.NewInput().
-				Title("Coding Agent — Link URL").
-				Value(&t.CodingAgentLinkURL),
-			huh.NewInput().
-				Title("Coding Agent — Link Text").
-				Value(&t.CodingAgentLinkText),
-		).WithHideFunc(func() bool { return !t.CodingAgentEnabled }),
-
-		// Billing
-		huh.NewGroup(
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Billing Notice — Enabled").
+				Title("Enable Billing Notice").
 				Value(&t.BillingEnabled),
-		),
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Billing — Severity").
-				Options(severityOptions...).
-				Value(&t.BillingSeverity),
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Billing — Dismissible").
-				Value(&t.BillingDismissible),
-			huh.NewInput().
-				Title("Billing — Title").
-				Value(&t.BillingTitle),
-			huh.NewInput().
-				Title("Billing — Message").
-				Value(&t.BillingMessage),
-			huh.NewInput().
-				Title("Billing — Link URL").
-				Value(&t.BillingLinkURL),
-			huh.NewInput().
-				Title("Billing — Link Text").
-				Value(&t.BillingLinkText),
-		).WithHideFunc(func() bool { return !t.BillingEnabled }),
-
-		// Credit Drawer
-		huh.NewGroup(
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Credit Drawer Notice — Enabled").
+				Title("Enable Credit Drawer Notice").
 				Value(&t.CreditDrawerEnabled),
 		),
+		// Page 2: Project List details (only if enabled)
 		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Credit Drawer — Severity").
-				Options(severityOptions...).
-				Value(&t.CreditDrawerSeverity),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Credit Drawer — Dismissible").
-				Value(&t.CreditDrawerDismissible),
-			huh.NewInput().
-				Title("Credit Drawer — Title").
-				Value(&t.CreditDrawerTitle),
-			huh.NewInput().
-				Title("Credit Drawer — Message").
-				Value(&t.CreditDrawerMessage),
-			huh.NewInput().
-				Title("Credit Drawer — Link URL").
-				Value(&t.CreditDrawerLinkURL),
-			huh.NewInput().
-				Title("Credit Drawer — Link Text").
-				Value(&t.CreditDrawerLinkText),
+			huh.NewSelect[string]().Title("Project List — Severity").Options(severityOptions...).Value(&t.ProjectListSeverity),
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).Title("Project List — Dismissible").Value(&t.ProjectListDismissible),
+			huh.NewInput().Title("Project List — Title").Value(&t.ProjectListTitle),
+			huh.NewInput().Title("Project List — Message").Value(&t.ProjectListMessage),
+			huh.NewInput().Title("Project List — Link URL").Value(&t.ProjectListLinkURL),
+			huh.NewInput().Title("Project List — Link Text").Value(&t.ProjectListLinkText),
+		).WithHideFunc(func() bool { return !t.ProjectListEnabled }),
+		// Page 3: Coding Agent details
+		huh.NewGroup(
+			huh.NewSelect[string]().Title("Coding Agent — Severity").Options(severityOptions...).Value(&t.CodingAgentSeverity),
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).Title("Coding Agent — Dismissible").Value(&t.CodingAgentDismissible),
+			huh.NewInput().Title("Coding Agent — Title").Value(&t.CodingAgentTitle),
+			huh.NewInput().Title("Coding Agent — Message").Value(&t.CodingAgentMessage),
+			huh.NewInput().Title("Coding Agent — Link URL").Value(&t.CodingAgentLinkURL),
+			huh.NewInput().Title("Coding Agent — Link Text").Value(&t.CodingAgentLinkText),
+		).WithHideFunc(func() bool { return !t.CodingAgentEnabled }),
+		// Page 4: Billing details
+		huh.NewGroup(
+			huh.NewSelect[string]().Title("Billing — Severity").Options(severityOptions...).Value(&t.BillingSeverity),
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).Title("Billing — Dismissible").Value(&t.BillingDismissible),
+			huh.NewInput().Title("Billing — Title").Value(&t.BillingTitle),
+			huh.NewInput().Title("Billing — Message").Value(&t.BillingMessage),
+			huh.NewInput().Title("Billing — Link URL").Value(&t.BillingLinkURL),
+			huh.NewInput().Title("Billing — Link Text").Value(&t.BillingLinkText),
+		).WithHideFunc(func() bool { return !t.BillingEnabled }),
+		// Page 5: Credit Drawer details
+		huh.NewGroup(
+			huh.NewSelect[string]().Title("Credit Drawer — Severity").Options(severityOptions...).Value(&t.CreditDrawerSeverity),
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).Title("Credit Drawer — Dismissible").Value(&t.CreditDrawerDismissible),
+			huh.NewInput().Title("Credit Drawer — Title").Value(&t.CreditDrawerTitle),
+			huh.NewInput().Title("Credit Drawer — Message").Value(&t.CreditDrawerMessage),
+			huh.NewInput().Title("Credit Drawer — Link URL").Value(&t.CreditDrawerLinkURL),
+			huh.NewInput().Title("Credit Drawer — Link Text").Value(&t.CreditDrawerLinkText),
 		).WithHideFunc(func() bool { return !t.CreditDrawerEnabled }),
 	)
 }

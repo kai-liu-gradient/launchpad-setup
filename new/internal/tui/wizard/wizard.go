@@ -2,12 +2,14 @@ package wizard
 
 import (
 	"fmt"
-	"strconv"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/gradient8/launchpad/internal/config"
 	"github.com/gradient8/launchpad/internal/tui/components"
+	"github.com/gradient8/launchpad/internal/tui/panel/tabs"
 )
 
 // Mode selects which install wizard to present to the user.
@@ -18,37 +20,108 @@ const (
 	Custom
 )
 
+// ExitReason indicates why the wizard panel exited.
+type ExitReason int
+
+const (
+	ExitQuit    ExitReason = iota // user pressed q/esc/ctrl+c
+	ExitDeploy                    // user pressed d to deploy
+	ExitEdit                      // user pressed enter to edit a tab (internal)
+)
+
+// EditableTab matches the configure panel's tab interface.
+type EditableTab interface {
+	View() string
+	Form() *huh.Form
+	Apply(cfg *config.Config)
+}
+
 // Model is the bubbletea model for the install wizard.
 type Model struct {
-	mode    Mode
-	form    *huh.Form
-	result  *config.Config
-	done    bool
-	aborted bool
+	mode       Mode
+	form       *huh.Form // only used in Express mode
+	cfg        *config.Config
+	menu       components.SideMenu
+	tabList    []EditableTab
+	result     *config.Config
+	done       bool
+	aborted    bool
+	exitReason ExitReason
+	message    string
 }
 
 // New creates a wizard Model for the given mode.
 func New(mode Mode) Model {
-	var form *huh.Form
 	if mode == Express {
-		form = NewExpressForm()
-	} else {
-		form = NewCustomForm()
+		return Model{
+			mode: mode,
+			form: NewExpressForm(),
+		}
 	}
+	return newCustomPanel(config.DefaultConfig(""))
+}
+
+// NewWithConfig creates a Custom wizard pre-filled with an existing config.
+func NewWithConfig(cfg *config.Config) Model {
+	return newCustomPanel(cfg)
+}
+
+func newCustomPanel(cfg *config.Config) Model {
+	items := []components.MenuItem{
+		{Name: "Basic"},
+		{Name: "SSL"},
+		{Name: "Database"},
+		{Name: "Kubernetes"},
+		{Name: "SMTP"},
+		{Name: "SSO"},
+		{Name: "Storage"},
+		{Name: "Telegram"},
+		{Name: "AI"},
+		{Name: "Stripe"},
+		{Name: "Performance"},
+		{Name: "Experimental"},
+	}
+
+	tabList := []EditableTab{
+		tabs.NewBasicTab(cfg),
+		tabs.NewSSLTab(cfg),
+		tabs.NewDatabaseTab(cfg),
+		tabs.NewKubernetesTab(cfg),
+		tabs.NewSMTPTab(cfg),
+		tabs.NewSSOTab(cfg),
+		tabs.NewStorageTab(cfg),
+		tabs.NewTelegramTab(cfg),
+		tabs.NewAITab(cfg),
+		tabs.NewStripeTab(cfg),
+		tabs.NewPerformanceTab(cfg),
+		tabs.NewExperimentalTab(cfg),
+	}
+
 	return Model{
-		mode: mode,
-		form: form,
+		mode:    Custom,
+		cfg:     cfg,
+		menu:    components.SideMenu{Items: items, Active: 0},
+		tabList: tabList,
 	}
 }
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
-	return m.form.Init()
+	if m.mode == Express {
+		return m.form.Init()
+	}
+	return nil
 }
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Handle quit
+	if m.mode == Express {
+		return m.updateExpress(msg)
+	}
+	return m.updateCustom(msg)
+}
+
+func (m Model) updateExpress(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		if keyMsg.String() == "ctrl+c" {
 			m.aborted = true
@@ -62,30 +135,92 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.form.State == huh.StateCompleted {
+		if !expressConfirm {
+			// Switch to Custom panel, carry over the domain
+			cfg := config.DefaultConfig(expressDomain)
+			panel := newCustomPanel(cfg)
+			return panel, nil
+		}
 		m.done = true
-		m.result = m.buildConfig()
+		m.result = config.DefaultConfig(expressDomain)
 		return m, tea.Quit
 	}
 
 	return m, cmd
 }
 
+func (m Model) updateCustom(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "up", "k":
+			m.menu.Prev()
+			m.message = ""
+		case "down", "j":
+			m.menu.Next()
+			m.message = ""
+		case "q", "ctrl+c":
+			m.aborted = true
+			return m, tea.Quit
+		case "enter":
+			m.exitReason = ExitEdit
+			return m, tea.Quit
+		case "d":
+			// Apply all tabs to config, then deploy
+			for _, tab := range m.tabList {
+				tab.Apply(m.cfg)
+			}
+			// Ensure subdomain and admin email are set
+			m.cfg.Subdomain = "launchpad"
+			m.cfg.AdminEmail = "admin@" + m.cfg.Domain
+			if m.cfg.Domain == "" {
+				m.message = "Domain is required — edit Basic first"
+				return m, nil
+			}
+			m.done = true
+			m.result = m.cfg
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
 // View implements tea.Model.
 func (m Model) View() string {
 	header := components.TitleStyle.Render("AniLaunchpad Setup")
-	subtitle := components.SubtitleStyle.Render(m.modeLabel())
-	return fmt.Sprintf("%s\n%s\n\n%s", header, subtitle, m.form.View())
-}
 
-func (m Model) modeLabel() string {
 	if m.mode == Express {
-		return "Express Setup — 2 questions to deploy"
+		subtitle := components.SubtitleStyle.Render("Express Setup — quick deploy with defaults")
+		return fmt.Sprintf("%s\n%s\n\n%s", header, subtitle, m.form.View())
 	}
-	return "Custom Setup — full configuration"
+
+	subtitle := components.SubtitleStyle.Render("Custom Setup — configure each section")
+
+	menuStr := m.menu.Render()
+	content := m.tabList[m.menu.Active].View()
+
+	if m.message != "" {
+		content += "\n\n  " + components.SuccessStyle.Render(m.message)
+	}
+
+	menuBox := lipgloss.NewStyle().
+		Width(18).
+		MarginRight(2).
+		Render(menuStr)
+
+	contentLines := strings.Split(content, "\n")
+	contentStr := strings.Join(contentLines, "\n")
+	contentBox := lipgloss.NewStyle().Render(contentStr)
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, menuBox, contentBox)
+
+	hint := "↑/↓ navigate · enter edit · d deploy · q quit"
+	statusBar := components.MutedStyle.Render(hint)
+
+	return fmt.Sprintf("\n%s\n%s\n\n%s\n\n%s\n", header, subtitle, body, statusBar)
 }
 
-// Result returns the completed Config, or nil if the wizard was aborted or not
-// yet finished.
+// Result returns the completed Config.
 func (m Model) Result() *config.Config {
 	return m.result
 }
@@ -95,131 +230,22 @@ func (m Model) Done() bool {
 	return m.done
 }
 
-// Aborted reports whether the user pressed ctrl+c to cancel.
+// Aborted reports whether the user cancelled.
 func (m Model) Aborted() bool {
 	return m.aborted
 }
 
-// buildConfig reads the collected form values and constructs a *config.Config.
-func (m Model) buildConfig() *config.Config {
-	if m.mode == Express {
-		return config.DefaultConfig(expressDomain, expressEmail)
-	}
-	return m.buildCustomConfig()
+// ExitReason returns why the panel exited (for edit loop).
+func (m Model) ExitReason() ExitReason {
+	return m.exitReason
 }
 
-// buildCustomConfig assembles a Config from all custom form variables.
-func (m Model) buildCustomConfig() *config.Config {
-	apiReplicas, _ := strconv.Atoi(customAPIReplicas)
-	if apiReplicas <= 0 {
-		apiReplicas = 1
-	}
-	dbConnLimit, _ := strconv.Atoi(customDBConnLimit)
-	if dbConnLimit <= 0 {
-		dbConnLimit = 100
-	}
+// ActiveTab returns the currently selected tab index.
+func (m Model) ActiveTab() int {
+	return m.menu.Active
+}
 
-	registry := customRegistry
-	if registry == "" {
-		registry = "swr.ap-southeast-1.myhuaweicloud.com/ghisha"
-	}
-	subdomain := customSubdomain
-	if subdomain == "" {
-		subdomain = "launchpad"
-	}
-
-	cfg := &config.Config{
-		Domain:     customDomain,
-		Subdomain:  subdomain,
-		AdminEmail: customEmail,
-
-		Images: config.ImageConfig{
-			Registry: registry,
-		},
-
-		SSL: config.SSLConfig{
-			Mode:        customSSLMode,
-			DNSProvider: customDNSProvider,
-			DNSAPIToken: customDNSToken,
-			CertPath:    customCertPath,
-			KeyPath:     customKeyPath,
-		},
-
-		Database: config.DBConfig{
-			Mode: customDBMode,
-		},
-
-		Kubernetes: config.K8sConfig{
-			Mode:       customK8sMode,
-			Kubeconfig: customKubeconfig,
-			Context:    customK8sContext,
-		},
-
-		SMTP: config.SMTPConfig{
-			Host:     customSMTPHost,
-			User:     customSMTPUser,
-			Password: customSMTPPassword,
-			From:     customSMTPFrom,
-		},
-
-		SSO: config.SSOConfig{
-			EntraTenantID: customEntraTenant,
-			EntraClientID: customEntraClient,
-			EntraSecret:   customEntraSecret,
-		},
-
-		Storage: config.StorageConfig{
-			Mode:           customStorageMode,
-			S3Bucket:       customS3Bucket,
-			S3Region:       customS3Region,
-			S3Key:          customS3Key,
-			S3Secret:       customS3Secret,
-			AzureConn:      customAzureConn,
-			AzureContainer: customAzureContainer,
-		},
-
-		Telegram: config.TelegramConfig{
-			BotToken:    customTelegramBotToken,
-			BotUsername: customTelegramUsername,
-			ChatID:      customTelegramChatID,
-		},
-
-		AI: config.AIConfig{
-			CRS2Endpoint: customCRS2Endpoint,
-			CRS2Token:    customCRS2Token,
-		},
-
-		Stripe: config.StripeConfig{
-			SecretKey:      customStripeSecret,
-			WebhookSecret:  customStripeWebhook,
-			PublishableKey: customStripePublish,
-		},
-
-		Performance: config.PerfConfig{
-			APIReplicas: apiReplicas,
-			DBConnLimit: dbConnLimit,
-		},
-	}
-
-	// Populate external DB URLs map if needed.
-	if customDBMode == "external" {
-		cfg.Database.URLs = map[string]string{
-			"main":       customDBMain,
-			"monitoring": customDBMonitor,
-			"events":     customDBEvents,
-			"billing":    customDBBilling,
-			"stats":      customDBStats,
-			"gateway":    customDBGateway,
-		}
-	}
-
-	// Parse SMTP port.
-	if customSMTPPort != "" {
-		port, err := strconv.Atoi(customSMTPPort)
-		if err == nil {
-			cfg.SMTP.Port = port
-		}
-	}
-
-	return cfg
+// Tabs returns the tab list for external edit loop access.
+func (m Model) Tabs() []EditableTab {
+	return m.tabList
 }

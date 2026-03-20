@@ -21,13 +21,18 @@ func (e *Engine) startGitea(ctx context.Context) error {
 }
 
 func (e *Engine) bootstrapGitea(ctx context.Context) error {
-	// Idempotency: check if launchpad org already exists
+	// Idempotency: check if launchpad org already exists AND we have a valid token
 	status, err := DockerExec(ctx, e.output, "gitea",
 		"curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
 		"http://localhost:3000/api/v1/orgs/launchpad")
 	if err == nil && strings.TrimSpace(status) == "200" {
-		// Org exists, but ensure runtime values are loaded and .env is up to date
-		return e.ensureRuntimeRendered()
+		// Org exists — try to reuse saved runtime values
+		runtimePath := filepath.Join(e.output, ".runtime.yaml")
+		rv, _ := tmpl.LoadRuntime(runtimePath)
+		if rv.GiteaAccessToken != "" {
+			return e.renderWithRuntime(rv)
+		}
+		// Token missing (e.g. re-install) — fall through to re-generate token
 	}
 
 	// Wait a bit for Gitea to be fully ready
@@ -36,13 +41,26 @@ func (e *Engine) bootstrapGitea(ctx context.Context) error {
 	giteaAdmin := strings.Split(e.cfg.AdminEmail, "@")[0]
 	giteaPass := e.sec.AdminPassword
 
-	// Create admin user
+	// Create admin user (ignore error if already exists)
 	DockerExec(ctx, e.output, "gitea", //nolint:errcheck
 		"gitea", "admin", "user", "create",
 		"--username", giteaAdmin,
 		"--password", giteaPass,
 		"--email", e.cfg.AdminEmail,
 		"--admin", "--must-change-password=false")
+
+	// Ensure password is current (handles re-install where user exists with old password)
+	DockerExec(ctx, e.output, "gitea", //nolint:errcheck
+		"gitea", "admin", "user", "change-password",
+		"--username", giteaAdmin,
+		"--password", giteaPass,
+		"--must-change-password=false")
+
+	// Delete existing token (idempotent — ignore errors if it doesn't exist)
+	DockerExec(ctx, e.output, "gitea", //nolint:errcheck
+		"curl", "-s", "-X", "DELETE",
+		fmt.Sprintf("http://localhost:3000/api/v1/users/%s/tokens/launchpad-api", giteaAdmin),
+		"-u", fmt.Sprintf("%s:%s", giteaAdmin, giteaPass))
 
 	// Generate API token via Gitea API
 	tokenJSON, err := DockerExec(ctx, e.output, "gitea",
@@ -67,7 +85,7 @@ func (e *Engine) bootstrapGitea(ctx context.Context) error {
 		token = t
 	}
 	if token == "" {
-		return fmt.Errorf("could not extract token from Gitea response")
+		return fmt.Errorf("could not extract token from Gitea response: %s", tokenJSON)
 	}
 
 	// Create launchpad organization
@@ -78,12 +96,11 @@ func (e *Engine) bootstrapGitea(ctx context.Context) error {
 		"-H", "Content-Type: application/json",
 		"-d", `{"username":"launchpad","full_name":"Launchpad","visibility":"public"}`)
 
-	// Save runtime values and re-render templates
-	rv := &tmpl.RuntimeValues{
-		GiteaAccessToken: token,
-		GiteaUser:        giteaAdmin,
-	}
+	// Save runtime values and re-render templates (preserve existing fields like IngressClusterIP)
 	runtimePath := filepath.Join(e.output, ".runtime.yaml")
+	rv, _ := tmpl.LoadRuntime(runtimePath)
+	rv.GiteaAccessToken = token
+	rv.GiteaUser = giteaAdmin
 	if err := rv.Save(runtimePath); err != nil {
 		return fmt.Errorf("saving runtime values: %w", err)
 	}

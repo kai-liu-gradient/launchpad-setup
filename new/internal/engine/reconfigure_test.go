@@ -8,8 +8,8 @@ import (
 )
 
 func TestApplyChanges_BuildsRestartList(t *testing.T) {
-	old := config.DefaultConfig("example.com", "admin@example.com")
-	new_ := config.DefaultConfig("example.com", "admin@example.com")
+	old := config.DefaultConfig("example.com")
+	new_ := config.DefaultConfig("example.com")
 	new_.SMTP.Host = "smtp.example.com"
 
 	sec, _ := secrets.Generate()
@@ -41,8 +41,8 @@ func TestApplyChanges_BuildsRestartList(t *testing.T) {
 }
 
 func TestApplyChanges_NoChanges(t *testing.T) {
-	old := config.DefaultConfig("example.com", "admin@example.com")
-	new_ := config.DefaultConfig("example.com", "admin@example.com")
+	old := config.DefaultConfig("example.com")
+	new_ := config.DefaultConfig("example.com")
 
 	sec, _ := secrets.Generate()
 	e := New(old, sec, t.TempDir(), nil)
@@ -54,8 +54,8 @@ func TestApplyChanges_NoChanges(t *testing.T) {
 }
 
 func TestApplyChanges_SSLChange(t *testing.T) {
-	old := config.DefaultConfig("example.com", "admin@example.com")
-	new_ := config.DefaultConfig("example.com", "admin@example.com")
+	old := config.DefaultConfig("example.com")
+	new_ := config.DefaultConfig("example.com")
 	new_.SSL.Mode = "letsencrypt"
 
 	sec, _ := secrets.Generate()

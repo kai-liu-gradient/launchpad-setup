@@ -66,6 +66,7 @@ func (t *AuthenticationTab) Form() *huh.Form {
 				Description("Message shown when SSO-only mode is active").
 				Value(&t.SSOOnlyNotice),
 		),
+		// Page 2: Password login settings
 		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Password Login — Enabled").
@@ -77,6 +78,7 @@ func (t *AuthenticationTab) Form() *huh.Form {
 				Title("Password Login — Disabled Notice").
 				Value(&t.PasswordDisabledNotice),
 		),
+		// Page 3: All OAuth providers on one page
 		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Google — Enabled").
@@ -84,16 +86,12 @@ func (t *AuthenticationTab) Form() *huh.Form {
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Google — Allow Signup").
 				Value(&t.GoogleAllowSignup),
-		),
-		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("GitHub — Enabled").
 				Value(&t.GitHubEnabled),
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("GitHub — Allow Signup").
 				Value(&t.GitHubAllowSignup),
-		),
-		huh.NewGroup(
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Microsoft — Enabled").
 				Value(&t.MicrosoftEnabled),

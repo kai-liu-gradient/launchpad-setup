@@ -11,12 +11,11 @@ import (
 // Express form field values — readable after form completion.
 var (
 	expressDomain  string
-	expressEmail   string
 	expressConfirm bool
 )
 
 // NewExpressForm creates a huh.Form for the express setup path.
-// It asks only for domain, email, and a final confirmation.
+// It asks only for domain and a final confirmation. Admin email is auto-generated.
 func NewExpressForm() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
@@ -25,12 +24,6 @@ func NewExpressForm() *huh.Form {
 				Placeholder("example.com").
 				Value(&expressDomain).
 				Validate(domainValidator),
-
-			huh.NewInput().
-				Title("Admin email").
-				Placeholder("admin@example.com").
-				Value(&expressEmail).
-				Validate(emailValidator),
 
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Deploy with defaults?").
