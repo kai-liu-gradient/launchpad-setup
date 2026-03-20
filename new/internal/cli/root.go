@@ -12,6 +12,7 @@ func newRootCmd(version string) *cobra.Command {
 	cmd.AddCommand(
 		newInstallCmd(),
 		newConfigureCmd(),
+		newSettingsCmd(),
 		newStatusCmd(),
 		newUpgradeCmd(),
 		newRestartCmd(),
@@ -19,6 +20,7 @@ func newRootCmd(version string) *cobra.Command {
 		newSetupCertsCmd(),
 		newSetupDBCmd(),
 		newImportTemplatesCmd(),
+		newSetupTelegramCmd(),
 	)
 	return cmd
 }
