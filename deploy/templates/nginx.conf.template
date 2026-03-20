@@ -85,7 +85,8 @@ http {
     # 1. Dashboard — ${LAUNCHPAD_DOMAIN}
     # =========================================================================
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name ${LAUNCHPAD_DOMAIN};
 
         ssl_certificate /etc/nginx/certs/fullchain.pem;
@@ -230,7 +231,8 @@ http {
     # 2. Gitea — ${GITEA_DOMAIN}
     # =========================================================================
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name ${GITEA_DOMAIN};
 
         ssl_certificate /etc/nginx/certs/fullchain.pem;
@@ -255,14 +257,15 @@ http {
     # 3. Project Wildcard — *.${DOMAIN}
     # =========================================================================
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name *.${DOMAIN};
 
         ssl_certificate /etc/nginx/certs/wildcard-fullchain.pem;
         ssl_certificate_key /etc/nginx/certs/wildcard-privkey.pem;
 
         add_header Strict-Transport-Security "max-age=63072000" always;
-        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "frame-ancestors 'self' https://${LAUNCHPAD_DOMAIN}" always;
         add_header X-Content-Type-Options "nosniff" always;
 
         location / {
@@ -281,10 +284,37 @@ http {
     }
 
     # =========================================================================
-    # 4. HTTP → HTTPS redirect
+    # 4. Internal HTTP proxy (port 80) — Docker containers → ingress-nginx
+    # Router connects to backend domain on port 80 but preserves the original
+    # project Host header (e.g., Host: project1.testclaw.com). This wildcard
+    # matches that Host and forwards to ingress-nginx which routes by Host.
+    # Browser traffic always comes via HTTPS:443, so this only serves
+    # internal Docker container traffic (Router, Gateway).
     # =========================================================================
     server {
         listen 80;
+        server_name *.${DOMAIN};
+
+        location / {
+            proxy_pass http://${HOST_IP}:30080;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 86400s;
+            proxy_read_timeout 86400s;
+        }
+    }
+
+    # =========================================================================
+    # 5. HTTP → HTTPS redirect (all other domains)
+    # =========================================================================
+    server {
+        listen 80 default_server;
         server_name _;
 
         location /nginx-health {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -22,7 +23,7 @@ func NewProjectsTab(s *settingsmod.Settings) *ProjectsTab {
 func (t *ProjectsTab) Form() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Disable Project Creation").
 				Description("Prevent users from creating new projects").
 				Value(&t.CreateDisabled),

@@ -55,6 +55,23 @@ check_environment() {
         else
             log_ok "helm: $(helm version --short 2>/dev/null)"
         fi
+
+        # dnsmasq (required for Docker→k8s DNS routing)
+        if ! command -v dnsmasq &>/dev/null; then
+            log_info "Installing dnsmasq..."
+            if command -v apt-get &>/dev/null; then
+                apt-get update -qq && apt-get install -y -qq dnsmasq >/dev/null 2>&1 || true
+            elif command -v yum &>/dev/null; then
+                yum install -y -q dnsmasq >/dev/null 2>&1 || true
+            elif command -v dnf &>/dev/null; then
+                dnf install -y -q dnsmasq >/dev/null 2>&1 || true
+            fi
+        fi
+        if command -v dnsmasq &>/dev/null; then
+            log_ok "dnsmasq: available"
+        else
+            log_warn "dnsmasq not available — Docker containers may not reach k8s pods"
+        fi
     fi
 
     if [[ "$errors" -gt 0 ]]; then

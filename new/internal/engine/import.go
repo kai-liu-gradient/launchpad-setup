@@ -26,8 +26,6 @@ func (e *Engine) importTemplates(ctx context.Context) error {
 		return nil
 	}
 
-	giteaAdmin := strings.Split(e.cfg.AdminEmail, "@")[0]
-	giteaPass := e.sec.AdminPassword
 	giteaDomain := e.cfg.Subdomain + "-gitea." + e.cfg.Domain
 	sslInsecure := e.cfg.SSL.Mode == "selfsigned"
 
@@ -78,8 +76,8 @@ func (e *Engine) importTemplates(ctx context.Context) error {
 		RunWithTimeout(ctx, "extract-"+repoName, 30*time.Second,
 			"tar", "xzf", tarFile, "-C", tmpDir, "--strip-components=1")
 
-		remoteURL := fmt.Sprintf("https://%s:%s@%s/launchpad/%s.git",
-			giteaAdmin, giteaPass, giteaDomain, repoName)
+		remoteURL := fmt.Sprintf("https://admin:%s@%s/launchpad/%s.git",
+			token, giteaDomain, repoName)
 
 		var pushOK bool
 		for attempt := 0; attempt < 3; attempt++ {

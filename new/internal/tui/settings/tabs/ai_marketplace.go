@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -23,7 +24,7 @@ func NewAIMarketplaceTab(s *settingsmod.Settings) *AIMarketplaceTab {
 func (t *AIMarketplaceTab) Form() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Visible").
 				Description("Show the AI Marketplace to users").
 				Value(&t.Visible),

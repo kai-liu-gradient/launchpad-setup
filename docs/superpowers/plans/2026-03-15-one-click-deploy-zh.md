@@ -10,6 +10,8 @@
 
 **设计文档：** `docs/superpowers/specs/2026-03-15-one-click-deploy-design.md`
 
+**补丁文档：** `docs/superpowers/specs/2026-03-16-runtime-fixes-and-heartbeat.md`（运行时修复 + 心跳服务）
+
 ---
 
 ## 分块 1：基础（common.sh、i18n.sh、语言包、versions.conf、setup.sh 骨架）
@@ -2592,3 +2594,105 @@ Modular Bash deployment script for AniLaunchpad platform:
 - Cluster registration via Launchpad API
 - Config persistence and idempotent re-runs"
 ```
+
+---
+
+## 补丁：运行时修复与心跳服务（2026-03-16）
+
+> 以下任务记录实际部署测试（macOS Apple Silicon + colima k3s）中发现并修复的问题。所有任务已完成。
+
+### 任务 P1：Nginx 健康检查与 Docker 网络连通性
+
+**文件：**
+- 修改：`deploy/scripts/lib/render.sh`
+- 修改：`deploy/templates/nginx.conf.template`
+- 修改：`deploy/templates/env.template`
+
+- [x] Nginx healthcheck 使用 `127.0.0.1` + `wget` 替代 `localhost` + `curl`
+- [x] 增加 `start_period: 5s`，wait timeout 增至 30s
+- [x] Nginx 容器增加域名网络别名
+- [x] 内部服务 URL（Router/Gateway/Gitea）使用 Docker DNS 地址 + 可覆盖默认值
+- [x] `listen 443 ssl http2` 拆分为 `listen 443 ssl` + `http2 on;`（Nginx 1.25+ 兼容）
+
+### 任务 P2：自签名证书与 TLS 处理
+
+**文件：**
+- 修改：`deploy/scripts/lib/certs.sh`
+- 修改：`deploy/scripts/lib/render.sh`
+
+- [x] 自签名证书 symlink 改为 `rm -f` + `cp`（Docker 跨设备挂载兼容）
+- [x] `SSL_MODE=selfsigned` 时 API 注入 `NODE_TLS_REJECT_UNAUTHORIZED=0`
+
+### 任务 P3：静默模式与进度条
+
+**文件：**
+- 修改：`deploy/scripts/lib/common.sh`
+- 修改：`deploy/scripts/lib/deploy.sh`
+- 修改：`deploy/scripts/lib/database.sh`
+- 修改：`deploy/setup.sh`
+
+- [x] 新增 `VERBOSE` 标志（`--verbose|-v`），默认静默
+- [x] 新增 `log_done()`（始终可见）、`verbose_filter()` 管道
+- [x] 新增进度条函数：`progress_start`/`progress_update`/`progress_done`
+- [x] deploy_services 使用进度条（11 步）
+
+### 任务 P4：`--resume` 修复
+
+**文件：**
+- 修改：`deploy/scripts/lib/deploy.sh`
+- 修改：`deploy/scripts/lib/interact.sh`
+
+- [x] `resume_deploy()` 加载语言包 `source lang/${LANG_CHOICE}.sh`
+- [x] `save_config()` 保存 `LANG_CHOICE`
+- [x] `register_cluster` 非致命包装 `|| log_warn`
+
+### 任务 P5：副本数与部署摘要
+
+**文件：**
+- 修改：`deploy/scripts/lib/interact.sh`
+- 修改：`deploy/scripts/lib/render.sh`
+
+- [x] 高级配置增加 `ROUTER_REPLICAS`、`GATEWAY_REPLICAS`
+- [x] Docker Compose 模板 API/Router/Gateway 支持 `deploy.replicas` + 滚动更新
+- [x] `show_summary` 完善（3 域名、基础设施配置、高级模块列表）
+
+### 任务 P6：Cron 容器修复
+
+**文件：**
+- 新增：`deploy/templates/crontab`
+- 修改：`deploy/scripts/lib/render.sh`
+
+- [x] crontab 文件从 `old/launchpad/pd/deploy/crontab` 复制到 `deploy/templates/`
+- [x] Docker Compose cron 服务改为 volume 挂载 `./launchpad/cron/crontab:/etc/crontabs/root:ro`
+- [x] `render_templates()` 复制 crontab 到 generated 目录
+
+### 任务 P7：K3s 注册 macOS 兼容
+
+**文件：**
+- 修改：`deploy/scripts/lib/k3s.sh`
+
+- [x] 始终传递 `--skip-k3s-check`
+- [x] `SSL_MODE=selfsigned` 时 sed 注入 `-k` 到 register.sh
+- [x] macOS 注入已检测 IP 替换 `detect_internal_ip`
+- [x] macOS `head -n -1` 替换为 `sed '$ d'`
+
+### 任务 P8：Gitea 环境变量与 Kubeconfig 修复
+
+**文件：**
+- 修改：`deploy/scripts/lib/render.sh`
+
+- [x] `GITEA_DB_HOST` 默认 `postgres`，`GITEA_DB_PORT` 默认 `5432`
+- [x] `GITEA_ROOT_URL` 默认 `https://${GITEA_DOMAIN}`
+- [x] `__KUBECONFIG_PATH__` 自动检测 `/etc/rancher/k3s/k3s.yaml` 或 `~/.kube/config`
+
+### 任务 P9：心跳服务
+
+**文件：**
+- 修改：`deploy/scripts/lib/k3s.sh`（新增 `setup_heartbeat()`）
+- 修改：`deploy/scripts/lib/render.sh`（新增 heartbeat compose 服务）
+
+- [x] 心跳作为 Docker Compose 服务（`bitnami/kubectl`）
+- [x] `setup_heartbeat()` 获取 token、下载脚本、生成容器专用 kubeconfig
+- [x] 容器 kubeconfig：`127.0.0.1` → `host.docker.internal` + `insecure-skip-tls-verify`
+- [x] 挂载到 `/.kube/config`（bitnami HOME=/）
+- [x] daemon 模式运行（60s 间隔循环）

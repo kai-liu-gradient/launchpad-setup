@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -33,7 +34,7 @@ func NewWelcomeCreditsTab(s *settingsmod.Settings) *WelcomeCreditsTab {
 func (t *WelcomeCreditsTab) Form() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Enable Welcome Credits").
 				Description("Grant credits to new users upon registration").
 				Value(&t.Enabled),

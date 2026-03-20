@@ -14,7 +14,7 @@ import (
 func (e *Engine) startGitea(ctx context.Context) error {
 	if err := RunWithTimeout(ctx, "start-gitea", 30*time.Second,
 		"docker", "compose", "-f", e.output+"/docker-compose.yml",
-		"up", "-d", "gitea"); err != nil {
+		"up", "-d", "--force-recreate", "gitea"); err != nil {
 		return fmt.Errorf("starting gitea: %w", err)
 	}
 	return WaitForDocker(ctx, e.output, "gitea", 90*time.Second)
@@ -26,7 +26,8 @@ func (e *Engine) bootstrapGitea(ctx context.Context) error {
 		"curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
 		"http://localhost:3000/api/v1/orgs/launchpad")
 	if err == nil && strings.TrimSpace(status) == "200" {
-		return nil // already bootstrapped
+		// Org exists, but ensure runtime values are loaded and .env is up to date
+		return e.ensureRuntimeRendered()
 	}
 
 	// Wait a bit for Gitea to be fully ready
@@ -77,7 +78,7 @@ func (e *Engine) bootstrapGitea(ctx context.Context) error {
 		"-H", "Content-Type: application/json",
 		"-d", `{"username":"launchpad","full_name":"Launchpad","visibility":"public"}`)
 
-	// Save runtime values
+	// Save runtime values and re-render templates
 	rv := &tmpl.RuntimeValues{
 		GiteaAccessToken: token,
 		GiteaUser:        giteaAdmin,
@@ -87,5 +88,34 @@ func (e *Engine) bootstrapGitea(ctx context.Context) error {
 		return fmt.Errorf("saving runtime values: %w", err)
 	}
 
+	return e.renderWithRuntime(rv)
+}
+
+// ensureRuntimeRendered loads saved runtime values and re-renders templates.
+// Used on re-runs where bootstrap was already done but .env may lack the token.
+func (e *Engine) ensureRuntimeRendered() error {
+	runtimePath := filepath.Join(e.output, ".runtime.yaml")
+	rv, err := tmpl.LoadRuntime(runtimePath)
+	if err != nil {
+		return fmt.Errorf("loading runtime values: %w", err)
+	}
+	if rv.GiteaAccessToken == "" {
+		return fmt.Errorf("runtime values file exists but GITEA_ACCESS_TOKEN is empty — delete %s and re-run", runtimePath)
+	}
+	return e.renderWithRuntime(rv)
+}
+
+// renderWithRuntime re-renders all templates with the given runtime values.
+func (e *Engine) renderWithRuntime(rv *tmpl.RuntimeValues) error {
+	derived := tmpl.ComputeDerived(e.cfg, e.sec)
+	renderCtx := &tmpl.RenderContext{
+		Config:  e.cfg,
+		Secrets: e.sec,
+		Derived: derived,
+		Runtime: rv,
+	}
+	if err := tmpl.RenderAll(renderCtx, e.output); err != nil {
+		return fmt.Errorf("re-rendering templates with runtime values: %w", err)
+	}
 	return nil
 }

@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	tmpl "github.com/gradient8/launchpad/internal/template"
 )
 
 // BuildStepList returns the ordered list of deployment steps based on the
@@ -67,17 +70,18 @@ func (e *Engine) BuildStepList() []Step {
 	// 15. Always: Starting Nginx
 	steps = append(steps, Step{Name: "Starting Nginx", Fn: e.startNginx})
 
-	// 16. Always: Importing templates
-	steps = append(steps, Step{Name: "Importing templates", Fn: e.importTemplates})
-
-	// 17. Always: Registering cluster
-	steps = append(steps, Step{Name: "Registering cluster", Fn: e.registerCluster})
-
-	// 18. If K8s mode == "builtin": Configuring /etc/hosts, Configuring dnsmasq
+	// 16. If K8s mode == "builtin": Configuring /etc/hosts, Configuring dnsmasq
+	// (must happen before register/import so curl can resolve domains via nginx)
 	if e.cfg.Kubernetes.Mode == "builtin" {
 		steps = append(steps, Step{Name: "Configuring /etc/hosts", Fn: e.configureEtcHosts})
 		steps = append(steps, Step{Name: "Configuring dnsmasq", Fn: e.configureDnsmasq})
 	}
+
+	// 17. Always: Importing templates
+	steps = append(steps, Step{Name: "Importing templates", Fn: e.importTemplates})
+
+	// 18. Always: Registering cluster
+	steps = append(steps, Step{Name: "Registering cluster", Fn: e.registerCluster})
 
 	return steps
 }
@@ -169,12 +173,22 @@ func (e *Engine) installIngressNginx(ctx context.Context) error {
 }
 
 func (e *Engine) configureCoreDNS(ctx context.Context) error {
-	// Get ingress-nginx ClusterIP (validates the service exists)
-	_, err := RunWithOutput(ctx, "get-ingress-ip", 10*time.Second,
+	// Get ingress-nginx ClusterIP
+	clusterIP, err := RunWithOutput(ctx, "get-ingress-ip", 10*time.Second,
 		"kubectl", "get", "svc", "ingress-nginx-controller",
 		"-n", "ingress-nginx", "-o", "jsonpath={.spec.clusterIP}")
 	if err != nil {
 		return fmt.Errorf("getting ingress-nginx ClusterIP: %w", err)
+	}
+	clusterIP = strings.TrimSpace(clusterIP)
+
+	// Re-render CoreDNS template with the actual IngressClusterIP
+	runtimePath := filepath.Join(e.output, ".runtime.yaml")
+	rv, _ := tmpl.LoadRuntime(runtimePath)
+	rv.IngressClusterIP = clusterIP
+	rv.Save(runtimePath)
+	if err := e.renderWithRuntime(rv); err != nil {
+		return fmt.Errorf("re-rendering templates with ingress ClusterIP: %w", err)
 	}
 
 	// Apply the rendered coredns config from the output dir

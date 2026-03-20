@@ -216,14 +216,20 @@ launchpad-setup/
     │   ├── env.gateway.template # Gateway .env 模板
     │   ├── nginx.conf.template # 合并后的单层 Nginx 配置模板
     │   ├── settings.yml.template # 运行时热加载配置模板
+    │   ├── crontab             # Cron 定时任务配置（挂载到容器）
     │   └── docker-compose.yml.template  # 完整编排模板（Nginx/Gitea/PG/Redis + 全部服务）
     └── generated/              # 运行时生成（加入 .gitignore）
         ├── launchpad/.env
         ├── launchpad/config/settings.yml
+        ├── launchpad/cron/crontab
         ├── gateway/.env
         ├── nginx/
         │   ├── nginx.conf
         │   └── certs/          # SSL 证书文件
+        ├── heartbeat/          # K3s 心跳服务配置
+        │   ├── k3s-heartbeat.sh
+        │   ├── heartbeat.env
+        │   └── kubeconfig      # 容器专用（host.docker.internal）
         ├── docker-compose.yml
         └── .setup.conf         # 用户配置持久化（重新运行时加载）
 ```
@@ -317,18 +323,19 @@ render_compose() {
 ### 内置 k3s 模式
 
 ```
-安装 k3s ──→ 部署 Launchpad ──→ 等待 API 就绪 ──→ 下载 register.sh ──→ 执行注册
-    │                                                    │
-    ├─ curl get.k3s.io                                   └─ curl -fsSL
-    ├─ --disable traefik                                    https://{LAUNCHPAD_DOMAIN}/admin/adminapi/k3s/register.sh
-    ├─ --tls-san <本机IP>
-    └─ 导出 kubeconfig
+安装 k3s ──→ 部署 Launchpad ──→ 等待 API 就绪 ──→ 下载 register.sh ──→ 执行注册 ──→ 心跳服务
+    │                                                    │                         │
+    ├─ curl get.k3s.io                                   └─ --skip-k3s-check      └─ setup_heartbeat()
+    ├─ --disable traefik                                    + macOS 兼容 patch        ├─ 获取 heartbeatToken
+    ├─ --tls-san <本机IP>                                   + -k 自签名证书            ├─ 下载 heartbeat.sh
+    └─ 导出 kubeconfig                                                               ├─ 生成容器用 kubeconfig
+                                                                                     └─ docker compose up heartbeat
 ```
 
 ### 外部 K8s 模式
 
 ```
-部署 Launchpad ──→ 等待 API 就绪 ──→ 下载 register.sh ──→ 使用 --skip-k3s-check 执行
+部署 Launchpad ──→ 等待 API 就绪 ──→ 下载 register.sh ──→ 使用 --skip-k3s-check 执行 ──→ 心跳服务
 ```
 
 ### register.sh 下载
@@ -401,12 +408,13 @@ services:
                      #   挂载: logs/api, config/settings.yml, data/api, kubeconfig
   ui:                # Launchpad UI (:6801)
   router:            # 项目路由 (:6580)
-  cron:              # 定时任务（挂载 pd/deploy/crontab）
+  cron:              # 定时任务（挂载 crontab 文件到 /etc/crontabs/root:ro）
   backup-worker:     # 备份队列工作进程
 
   # ---- 附加服务 ----
   gateway:           # ani-code Gateway (:6555), 挂载: gateway_data, logs
   gitea:             # Gitea (:3000, SSH :2222), 挂载: gitea_data
+  heartbeat:         # K3s 集群心跳 (bitnami/kubectl, 60s 间隔上报)
 
   # ---- 入口 ----
   nginx:             # TLS + 反向代理 (:80, :443)
@@ -500,8 +508,8 @@ deploy_services() {
     # 阶段 5：Gitea 引导（仅首次部署）
     bootstrap_gitea          # 见下方"Gitea 引导"章节
 
-    # 阶段 6：集群注册
-    register_cluster
+    # 阶段 6：集群注册 + 心跳服务
+    register_cluster   # 内含 setup_heartbeat()
 }
 ```
 
@@ -614,7 +622,8 @@ docker compose exec api curl -fsSL "http://localhost:6802/admin/adminapi/k3s/reg
 ## 命令行参数
 
 ```bash
-./deploy/setup.sh                  # 全新安装（交互式）
+./deploy/setup.sh                  # 全新安装（交互式，静默模式+进度条）
+./deploy/setup.sh --verbose        # 全新安装（详细输出）
 ./deploy/setup.sh --reconfigure    # 重新配置（加载上次 .setup.conf）
 ./deploy/setup.sh --status         # 查看服务状态
 ./deploy/setup.sh --upgrade        # 更新镜像版本

@@ -1,6 +1,7 @@
 package tabs
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/charmbracelet/huh"
@@ -42,6 +43,27 @@ func (t *SMTPTab) Form() *huh.Form {
 			huh.NewInput().Title("From Address").Value(&t.From),
 		),
 	)
+}
+
+func (t *SMTPTab) Groups() []*huh.Group {
+	return []*huh.Group{
+		huh.NewGroup(
+			huh.NewInput().Title("SMTP Host").Value(&t.Host),
+			huh.NewInput().Title("SMTP Port").Value(&t.Port),
+			huh.NewInput().Title("SMTP User").Value(&t.User),
+			huh.NewInput().
+				Title("SMTP Password").
+				EchoMode(huh.EchoModePassword).
+				Value(&t.Password),
+			huh.NewInput().Title("From Address").Value(&t.From),
+		).Title("SMTP"),
+	}
+}
+
+func (t *SMTPTab) View() string {
+	return fmt.Sprintf(
+		"  Host:     %s\n  Port:     %s\n  User:     %s\n  Password: %s\n  From:     %s",
+		displayValue(t.Host), displayValue(t.Port), displayValue(t.User), maskValue(t.Password), displayValue(t.From))
 }
 
 func (t *SMTPTab) Apply(cfg *config.Config) {

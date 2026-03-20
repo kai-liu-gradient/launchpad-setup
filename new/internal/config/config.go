@@ -18,8 +18,9 @@ type Config struct {
 	Storage     StorageConfig  `yaml:"storage"`
 	Telegram    TelegramConfig `yaml:"telegram,omitempty"`
 	AI          AIConfig       `yaml:"ai,omitempty"`
-	Stripe      StripeConfig   `yaml:"stripe,omitempty"`
-	Performance PerfConfig     `yaml:"performance"`
+	Stripe       StripeConfig       `yaml:"stripe,omitempty"`
+	Performance  PerfConfig         `yaml:"performance"`
+	Experimental ExperimentalConfig `yaml:"experimental,omitempty"`
 }
 
 // ImageConfig specifies container image registry and per-service overrides.
@@ -68,11 +69,16 @@ type SMTPConfig struct {
 	From     string `yaml:"from,omitempty"`
 }
 
-// SSOConfig holds Microsoft Entra ID (Azure AD) SSO settings.
+// SSOConfig holds SSO (Single Sign-On) settings.
 type SSOConfig struct {
-	EntraTenantID string `yaml:"entra_tenant_id,omitempty"`
-	EntraClientID string `yaml:"entra_client_id,omitempty"`
-	EntraSecret   string `yaml:"entra_secret,omitempty"`
+	Enabled         bool   `yaml:"enabled,omitempty"`
+	Provider        string `yaml:"provider,omitempty"` // "entra" (default), extensible
+	EntraTenantID   string `yaml:"entra_tenant_id,omitempty"`
+	EntraClientID   string `yaml:"entra_client_id,omitempty"`
+	EntraSecret     string `yaml:"entra_secret,omitempty"`
+	RedirectURL     string `yaml:"redirect_url,omitempty"`
+	EntraButtonIcon string `yaml:"entra_button_icon,omitempty"`
+	EntraButtonText string `yaml:"entra_button_text,omitempty"`
 }
 
 // StorageConfig controls object/file storage backend.
@@ -95,8 +101,12 @@ type TelegramConfig struct {
 
 // AIConfig holds AI service endpoint settings.
 type AIConfig struct {
-	CRS2Endpoint string `yaml:"crs2_endpoint,omitempty"`
-	CRS2Token    string `yaml:"crs2_token,omitempty"`
+	CRS2Enabled   bool   `yaml:"crs2_enabled,omitempty"`
+	CRS2Endpoint  string `yaml:"crs2_endpoint,omitempty"`
+	CRS2Token     string `yaml:"crs2_token,omitempty"`
+	PayGOClaude   bool   `yaml:"paygo_claude_enabled,omitempty"`
+	PayGOGemini   bool   `yaml:"paygo_gemini_enabled,omitempty"`
+	PayGOCodex    bool   `yaml:"paygo_codex_enabled,omitempty"`
 }
 
 // StripeConfig holds Stripe payment integration settings.
@@ -104,6 +114,12 @@ type StripeConfig struct {
 	SecretKey      string `yaml:"secret_key,omitempty"`
 	WebhookSecret  string `yaml:"webhook_secret,omitempty"`
 	PublishableKey string `yaml:"publishable_key,omitempty"`
+}
+
+// ExperimentalConfig holds experimental feature flags.
+type ExperimentalConfig struct {
+	UseBunRuntime bool `yaml:"use_bun_runtime,omitempty"`
+	DebugMode     bool `yaml:"debug_mode,omitempty"`
 }
 
 // PerfConfig holds performance tuning parameters.

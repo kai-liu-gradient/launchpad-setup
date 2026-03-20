@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -87,7 +88,7 @@ func (t *NoticesTab) Form() *huh.Form {
 	return huh.NewForm(
 		// Project List
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Project List Notice — Enabled").
 				Value(&t.ProjectListEnabled),
 		),
@@ -96,7 +97,7 @@ func (t *NoticesTab) Form() *huh.Form {
 				Title("Project List — Severity").
 				Options(severityOptions...).
 				Value(&t.ProjectListSeverity),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Project List — Dismissible").
 				Value(&t.ProjectListDismissible),
 			huh.NewInput().
@@ -115,7 +116,7 @@ func (t *NoticesTab) Form() *huh.Form {
 
 		// Coding Agent
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Coding Agent Notice — Enabled").
 				Value(&t.CodingAgentEnabled),
 		),
@@ -124,7 +125,7 @@ func (t *NoticesTab) Form() *huh.Form {
 				Title("Coding Agent — Severity").
 				Options(severityOptions...).
 				Value(&t.CodingAgentSeverity),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Coding Agent — Dismissible").
 				Value(&t.CodingAgentDismissible),
 			huh.NewInput().
@@ -143,7 +144,7 @@ func (t *NoticesTab) Form() *huh.Form {
 
 		// Billing
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Billing Notice — Enabled").
 				Value(&t.BillingEnabled),
 		),
@@ -152,7 +153,7 @@ func (t *NoticesTab) Form() *huh.Form {
 				Title("Billing — Severity").
 				Options(severityOptions...).
 				Value(&t.BillingSeverity),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Billing — Dismissible").
 				Value(&t.BillingDismissible),
 			huh.NewInput().
@@ -171,7 +172,7 @@ func (t *NoticesTab) Form() *huh.Form {
 
 		// Credit Drawer
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Credit Drawer Notice — Enabled").
 				Value(&t.CreditDrawerEnabled),
 		),
@@ -180,7 +181,7 @@ func (t *NoticesTab) Form() *huh.Form {
 				Title("Credit Drawer — Severity").
 				Options(severityOptions...).
 				Value(&t.CreditDrawerSeverity),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Credit Drawer — Dismissible").
 				Value(&t.CreditDrawerDismissible),
 			huh.NewInput().

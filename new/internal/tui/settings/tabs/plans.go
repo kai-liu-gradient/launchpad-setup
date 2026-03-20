@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -25,7 +26,7 @@ func NewPlansTab(s *settingsmod.Settings) *PlansTab {
 func (t *PlansTab) Form() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Enforce Free Plan").
 				Description("Force all users onto the free plan").
 				Value(&t.EnforceFreePlan),

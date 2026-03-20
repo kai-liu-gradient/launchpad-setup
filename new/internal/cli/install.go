@@ -168,7 +168,7 @@ func deployWithProgress(cfg *config.Config, sec *secrets.Secrets, dir, outputDir
 		stepNames[i] = s.Name
 	}
 
-	progressModel := progress.New(stepNames)
+	progressModel := progress.New(stepNames, events)
 	p := tea.NewProgram(progressModel)
 
 	// Run deploy in goroutine, sending events
@@ -176,9 +176,6 @@ func deployWithProgress(cfg *config.Config, sec *secrets.Secrets, dir, outputDir
 		eng.Deploy(context.Background()) //nolint:errcheck
 		close(events)
 	}()
-
-	// Pump events from the channel into the TUI
-	p.Send(progress.WaitForEvents(events)())
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("progress TUI failed: %w", err)

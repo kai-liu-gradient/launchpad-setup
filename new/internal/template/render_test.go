@@ -55,8 +55,8 @@ func TestRenderAll(t *testing.T) {
 		t.Fatalf("RenderAll failed: %v", err)
 	}
 
-	// Check .env was created
-	envPath := filepath.Join(outDir, ".env")
+	// Check .env was created in launchpad/ subdirectory
+	envPath := filepath.Join(outDir, "launchpad", ".env")
 	data, err := os.ReadFile(envPath)
 	if err != nil {
 		t.Fatalf("failed to read .env: %v", err)
@@ -83,7 +83,7 @@ func TestRenderAll_PreservesRuntime(t *testing.T) {
 		t.Fatalf("RenderAll failed: %v", err)
 	}
 
-	envPath := filepath.Join(outDir, ".env")
+	envPath := filepath.Join(outDir, "launchpad", ".env")
 	data, _ := os.ReadFile(envPath)
 	content := string(data)
 	if !strings.Contains(content, "test-token-123") {
@@ -99,16 +99,16 @@ func TestRenderAll_OutputFiles(t *testing.T) {
 	}
 
 	expectedFiles := []string{
-		".env",
-		".env.gateway",
-		"nginx.conf",
-		"settings.yml",
+		"launchpad/.env",
+		"gateway/.env",
+		"nginx/nginx.conf",
+		"launchpad/config/settings.yml",
 		"docker-compose.yml",
 		"coredns-custom.yaml",
 		"kyverno-inject-ca.yaml",
 		"kyverno-sync-ca.yaml",
 		"values-builtin.yml",
-		"crontab",
+		"launchpad/cron/crontab",
 	}
 	for _, f := range expectedFiles {
 		path := filepath.Join(outDir, f)
@@ -207,7 +207,7 @@ func TestRenderNginx(t *testing.T) {
 		t.Fatalf("RenderAll failed: %v", err)
 	}
 
-	got, _ := os.ReadFile(filepath.Join(outDir, "nginx.conf"))
+	got, _ := os.ReadFile(filepath.Join(outDir, "nginx", "nginx.conf"))
 	content := string(got)
 
 	if !strings.Contains(content, "server_name launchpad.example.com;") {
@@ -228,7 +228,7 @@ func TestRenderSettings(t *testing.T) {
 		t.Fatalf("RenderAll failed: %v", err)
 	}
 
-	got, _ := os.ReadFile(filepath.Join(outDir, "settings.yml"))
+	got, _ := os.ReadFile(filepath.Join(outDir, "launchpad", "config", "settings.yml"))
 	content := string(got)
 
 	if !strings.Contains(content, `"example.com"`) {
@@ -246,7 +246,7 @@ func TestRenderGatewayEnv(t *testing.T) {
 		t.Fatalf("RenderAll failed: %v", err)
 	}
 
-	got, _ := os.ReadFile(filepath.Join(outDir, ".env.gateway"))
+	got, _ := os.ReadFile(filepath.Join(outDir, "gateway", ".env"))
 	content := string(got)
 
 	if !strings.Contains(content, "ALLOWED_API_KEYS=gw-key") {
@@ -266,7 +266,7 @@ func TestRenderStaticFiles(t *testing.T) {
 	if err := RenderAll(ctx, outDir); err != nil {
 		t.Fatalf("RenderAll failed: %v", err)
 	}
-	for _, f := range []string{"kyverno-inject-ca.yaml", "kyverno-sync-ca.yaml", "crontab", "values-builtin.yml"} {
+	for _, f := range []string{"kyverno-inject-ca.yaml", "kyverno-sync-ca.yaml", "launchpad/cron/crontab", "values-builtin.yml"} {
 		if _, err := os.Stat(filepath.Join(outDir, f)); err != nil {
 			t.Errorf("static file %s not copied: %v", f, err)
 		}

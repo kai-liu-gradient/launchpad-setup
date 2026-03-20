@@ -5,6 +5,13 @@ select_language() {
     local selected=0 count=2
     local options=("English" "中文")
 
+    clear >/dev/tty 2>/dev/null || true
+    # Brand header before language is loaded — use hardcoded subtitle
+    echo "" >/dev/tty
+    print_centered "\033[0;31m■\033[0m \033[1;33m■\033[0m \033[0;32m■\033[0m \033[0;34m■\033[0m"
+    print_centered "${BOLD}AniLaunchpad${NC}"
+    echo "" >/dev/tty
+
     printf "  ${CYAN}◆${NC} Language / 语言选择\n"
 
     # Hide cursor
@@ -28,8 +35,8 @@ select_language() {
         if [[ "$key" == $'\x1b' ]]; then
             read -rsn2 key
             case "$key" in
-                '[A') ((selected > 0)) && ((selected--)) ;;
-                '[B') ((selected < count - 1)) && ((selected++)) ;;
+                '[A') ((selected > 0)) && ((selected--)) || true ;;
+                '[B') ((selected < count - 1)) && ((selected++)) || true ;;
             esac
         elif [[ "$key" == "" ]]; then
             break

@@ -25,6 +25,7 @@ render_templates() {
     export ENTRA_REDIRECT_URI="https://${LAUNCHPAD_DOMAIN}/api/v1/auth/microsoft/callback"
     export GATEWAY_PUBLIC_URL="https://${LAUNCHPAD_DOMAIN}/gatewayproxy"
     export TELEGRAM_BOT_USERNAME="${TELEGRAM_BOT_USERNAME:-}"
+    export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 
     # Internal service URLs: use Docker DNS for compose-local services, external URLs otherwise
     export ROUTER_LOCAL_URL="${ROUTER_LOCAL_URL:-http://router:6580}"

@@ -25,9 +25,10 @@ type Model struct {
 	elapsed   time.Duration
 	done      bool
 	err       error
+	eventCh   <-chan engine.StepEvent
 }
 
-func New(stepNames []string) Model {
+func New(stepNames []string, eventCh <-chan engine.StepEvent) Model {
 	steps := make([]StepView, len(stepNames))
 	for i, name := range stepNames {
 		steps[i] = StepView{Name: name, Status: engine.Pending}
@@ -44,11 +45,12 @@ func New(stepNames []string) Model {
 		spinner:   s,
 		progress:  p,
 		startTime: time.Now(),
+		eventCh:   eventCh,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, tickCmd())
+	return tea.Batch(m.spinner.Tick, tickCmd(), WaitForEvents(m.eventCh))
 }
 
 func tickCmd() tea.Cmd {
@@ -64,6 +66,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case TickMsg:
+		if m.done || m.err != nil {
+			return m, nil // stop ticking
+		}
 		m.elapsed = time.Since(m.startTime)
 		return m, tickCmd()
 	case StepEventMsg:
@@ -94,7 +99,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.done = allDone
-		return m, nil
+		if m.done || m.err != nil {
+			return m, tea.Quit
+		}
+		return m, WaitForEvents(m.eventCh)
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -140,7 +148,7 @@ func (m Model) View() string {
 	}
 	if m.err != nil {
 		b.WriteString("\n")
-		b.WriteString(components.ErrorStyle.Render(fmt.Sprintf("✗ Deployment failed: %s", m.err)))
+		b.WriteString(components.ErrorStyle.Render("✗ Deployment failed. See error above."))
 		b.WriteString(components.MutedStyle.Render("\nPress q to exit"))
 		b.WriteString("\n")
 	}

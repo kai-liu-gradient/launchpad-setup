@@ -6,31 +6,43 @@ import (
 	"github.com/gradient8/launchpad/internal/config"
 )
 
-func TestPreflightChecks_BuiltinRequiresHelm(t *testing.T) {
+func TestPreflightChecks_BuiltinSkipsKubectlHelm(t *testing.T) {
 	cfg := config.DefaultConfig("example.com", "admin@example.com")
 	cfg.Kubernetes.Mode = "builtin"
 	checks := RequiredTools(cfg)
 
-	found := false
 	for _, c := range checks {
-		if c.Name == "helm" {
-			found = true
-			break
+		if c.Name == "kubectl" || c.Name == "helm" {
+			t.Errorf("builtin K8s should not pre-check %s (installed by K3s)", c.Name)
 		}
 	}
-	if !found {
-		t.Error("builtin K8s should require helm")
+
+	// Should still require docker and curl
+	names := map[string]bool{}
+	for _, c := range checks {
+		names[c.Name] = true
+	}
+	if !names["docker"] {
+		t.Error("builtin K8s should require docker")
+	}
+	if !names["curl"] {
+		t.Error("builtin K8s should require curl")
 	}
 }
 
-func TestPreflightChecks_ExternalSkipsHelm(t *testing.T) {
+func TestPreflightChecks_ExternalRequiresKubectlHelm(t *testing.T) {
 	cfg := config.DefaultConfig("example.com", "admin@example.com")
 	cfg.Kubernetes.Mode = "external"
 	checks := RequiredTools(cfg)
 
+	names := map[string]bool{}
 	for _, c := range checks {
-		if c.Name == "helm" {
-			t.Error("external K8s should not require helm")
-		}
+		names[c.Name] = true
+	}
+	if !names["kubectl"] {
+		t.Error("external K8s should require kubectl")
+	}
+	if !names["helm"] {
+		t.Error("external K8s should require helm")
 	}
 }

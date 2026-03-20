@@ -4,6 +4,7 @@ package template
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/gradient8/launchpad/internal/config"
@@ -96,7 +97,7 @@ func ComputeDerived(cfg *config.Config, sec *secrets.Secrets) *DerivedValues {
 	d.ImageRefs = computeImageRefs(cfg)
 
 	// Network
-	d.HostIP = "127.0.0.1"
+	d.HostIP = detectHostIP()
 	if cfg.Kubernetes.Mode == "builtin" {
 		d.DefaultBackend = d.HostIP + ":30080"
 	} else {
@@ -138,6 +139,20 @@ func ComputeDerived(cfg *config.Config, sec *secrets.Secrets) *DerivedValues {
 	return d
 }
 
+// detectHostIP returns the first non-loopback IPv4 address, or "127.0.0.1" if none found.
+func detectHostIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "127.0.0.1"
+	}
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
+			return ipNet.IP.String()
+		}
+	}
+	return "127.0.0.1"
+}
+
 // computeDBConnStrings builds per-schema connection strings.
 // For builtin mode each schema gets a dedicated user and password from Secrets.
 // For external mode the URLs are taken directly from cfg.Database.URLs.
@@ -177,23 +192,31 @@ func computeDBConnStrings(cfg *config.Config, sec *secrets.Secrets) map[string]s
 
 // computeImageRefs builds per-service full image references.
 // If an explicit override is set in cfg.Images the override is used as-is;
-// otherwise the reference is composed as {registry}/{service-name}:{version}.
+// otherwise the reference is composed from the default registry and per-service
+// version constants from versions_gen.go.
 func computeImageRefs(cfg *config.Config) map[string]string {
 	registry := cfg.Images.Registry
-	version := cfg.Images.DefaultVersion
 
-	ref := func(override, serviceName string) string {
+	ref := func(override, serviceName, version string) string {
 		if override != "" {
 			return override
 		}
 		return registry + "/" + serviceName + ":" + version
 	}
 
-	return map[string]string{
-		"api":     ref(cfg.Images.API, "launchpad-api"),
-		"ui":      ref(cfg.Images.UI, "launchpad-ui"),
-		"router":  ref(cfg.Images.Router, "launchpad-router"),
-		"gateway": ref(cfg.Images.Gateway, "launchpad-gateway"),
-		"gitea":   ref(cfg.Images.Gitea, "launchpad-gitea"),
+	m := map[string]string{
+		"api":     ref(cfg.Images.API, "launchpad-api", config.DefaultAPIVersion),
+		"ui":      ref(cfg.Images.UI, "launchpad-ui", config.DefaultUIVersion),
+		"router":  ref(cfg.Images.Router, "launchpad-router", config.DefaultRouterVersion),
+		"gateway": ref(cfg.Images.Gateway, "ani-code-gateway", config.DefaultGatewayVersion),
 	}
+
+	// Gitea uses Docker Hub (gitea/gitea), not the private registry.
+	if cfg.Images.Gitea != "" {
+		m["gitea"] = cfg.Images.Gitea
+	} else {
+		m["gitea"] = "gitea/gitea:" + config.DefaultGiteaVersion
+	}
+
+	return m
 }

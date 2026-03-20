@@ -20,12 +20,12 @@ data:
   wildcard.server: |
     ${DOMAIN}:53 {
         hosts {
-            ${INGRESS_NGINX_CLUSTER_IP} ${DOMAIN}
+            ${INGRESS_CLUSTER_IP} ${DOMAIN}
             ttl 60
             fallthrough
         }
         template IN A {
             match ".*\.${DOMAIN_ESCAPED}\.$"
-            answer "{{ .Name }} 60 IN A ${INGRESS_NGINX_CLUSTER_IP}"
+            answer "{{ .Name }} 60 IN A ${INGRESS_CLUSTER_IP}"
         }
     }

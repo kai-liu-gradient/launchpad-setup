@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -56,7 +57,7 @@ func (t *AuthenticationTab) Form() *huh.Form {
 					huh.NewOption("SSO Only", "sso"),
 				).
 				Value(&t.Mode),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Provider Signup").
 				Description("Allow OAuth providers to create new accounts").
 				Value(&t.ProviderSignup),
@@ -66,10 +67,10 @@ func (t *AuthenticationTab) Form() *huh.Form {
 				Value(&t.SSOOnlyNotice),
 		),
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Password Login — Enabled").
 				Value(&t.PasswordEnabled),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Password Login — Enable Signup").
 				Value(&t.PasswordEnableSignup),
 			huh.NewInput().
@@ -77,29 +78,29 @@ func (t *AuthenticationTab) Form() *huh.Form {
 				Value(&t.PasswordDisabledNotice),
 		),
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Google — Enabled").
 				Value(&t.GoogleEnabled),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Google — Allow Signup").
 				Value(&t.GoogleAllowSignup),
 		),
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("GitHub — Enabled").
 				Value(&t.GitHubEnabled),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("GitHub — Allow Signup").
 				Value(&t.GitHubAllowSignup),
 		),
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Microsoft — Enabled").
 				Value(&t.MicrosoftEnabled),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Microsoft — Allow Signup").
 				Value(&t.MicrosoftAllowSignup),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Microsoft — Enforce Only").
 				Value(&t.MicrosoftEnforceOnly),
 		),

@@ -32,21 +32,26 @@ func (e *Engine) generateSelfsignedCerts(ctx context.Context, certDir string) er
 	launchpadDomain := e.cfg.Subdomain + "." + domain
 	giteaDomain := e.cfg.Subdomain + "-gitea." + domain
 
-	// Generate CA key
-	if err := RunWithTimeout(ctx, "ca-key", 30*time.Second,
-		"openssl", "genrsa", "-out", filepath.Join(certDir, "ca.key"), "2048"); err != nil {
-		return fmt.Errorf("generating CA key: %w", err)
-	}
+	// Reuse existing CA if present (avoid invalidating Kyverno-distributed bundles)
+	caKey := filepath.Join(certDir, "ca.key")
+	caCert := filepath.Join(certDir, "ca.pem")
+	if _, err := os.Stat(caKey); os.IsNotExist(err) {
+		// Generate CA key
+		if err := RunWithTimeout(ctx, "ca-key", 30*time.Second,
+			"openssl", "genrsa", "-out", caKey, "2048"); err != nil {
+			return fmt.Errorf("generating CA key: %w", err)
+		}
 
-	// Generate CA cert
-	if err := RunWithTimeout(ctx, "ca-cert", 30*time.Second,
-		"openssl", "req", "-new", "-x509", "-days", "3650",
-		"-key", filepath.Join(certDir, "ca.key"),
-		"-out", filepath.Join(certDir, "ca.pem"),
-		"-subj", "/CN=AniLaunchpad Local CA",
-		"-addext", "basicConstraints=critical,CA:TRUE",
-		"-addext", "keyUsage=critical,keyCertSign,cRLSign"); err != nil {
-		return fmt.Errorf("generating CA cert: %w", err)
+		// Generate CA cert
+		if err := RunWithTimeout(ctx, "ca-cert", 30*time.Second,
+			"openssl", "req", "-new", "-x509", "-days", "3650",
+			"-key", caKey,
+			"-out", caCert,
+			"-subj", "/CN=AniLaunchpad Local CA",
+			"-addext", "basicConstraints=critical,CA:TRUE",
+			"-addext", "keyUsage=critical,keyCertSign,cRLSign"); err != nil {
+			return fmt.Errorf("generating CA cert: %w", err)
+		}
 	}
 
 	// Generate server key
@@ -71,17 +76,27 @@ func (e *Engine) generateSelfsignedCerts(ctx context.Context, certDir string) er
 		san += ",IP:" + hostIP
 	}
 
-	// Sign with CA
+	// Sign with CA (output server cert only)
+	serverCert := filepath.Join(certDir, "server-cert.pem")
 	if err := RunWithTimeout(ctx, "sign-cert", 30*time.Second,
 		"bash", "-c", fmt.Sprintf(
 			`openssl x509 -req -days 3650 -in %s -CA %s -CAkey %s -CAcreateserial -out %s -extfile <(printf "subjectAltName=%s")`,
 			filepath.Join(certDir, "server.csr"),
-			filepath.Join(certDir, "ca.pem"),
-			filepath.Join(certDir, "ca.key"),
-			filepath.Join(certDir, "fullchain.pem"),
+			caCert,
+			caKey,
+			serverCert,
 			san)); err != nil {
 		return fmt.Errorf("signing cert: %w", err)
 	}
+
+	// Build fullchain: server cert + CA cert
+	fullchainPath := filepath.Join(certDir, "fullchain.pem")
+	serverData, _ := os.ReadFile(serverCert)
+	caData, _ := os.ReadFile(caCert)
+	if err := os.WriteFile(fullchainPath, append(serverData, caData...), 0644); err != nil {
+		return fmt.Errorf("writing fullchain: %w", err)
+	}
+	os.Remove(serverCert)
 
 	// Copy as wildcard certs
 	for _, pair := range [][2]string{

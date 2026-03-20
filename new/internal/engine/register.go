@@ -14,26 +14,12 @@ func (e *Engine) registerCluster(ctx context.Context) error {
 	// Download register.sh script
 	registerScript := "/tmp/launchpad-register.sh"
 
-	// Try public URL first
-	downloaded := false
-	curlArgs := []string{"-fsSL", "-k",
-		fmt.Sprintf("https://%s/admin/adminapi/k3s/register.sh", launchpadDomain),
-		"-o", registerScript}
+	// Download register.sh via HTTPS (hosts/dnsmasq already configured)
 	if err := RunWithTimeout(ctx, "download-register", 15*time.Second,
-		"curl", curlArgs...); err == nil {
-		downloaded = true
-	}
-
-	// Fallback: via Docker network
-	if !downloaded {
-		out, err := DockerExec(ctx, e.output, "api",
-			"curl", "-fsSL", "http://localhost:6802/admin/adminapi/k3s/register.sh")
-		if err != nil {
-			return fmt.Errorf("failed to download register.sh: %w", err)
-		}
-		if err := os.WriteFile(registerScript, []byte(out), 0755); err != nil {
-			return err
-		}
+		"curl", "-fsSL", "-k",
+		fmt.Sprintf("https://%s/admin/adminapi/k3s/register.sh", launchpadDomain),
+		"-o", registerScript); err != nil {
+		return fmt.Errorf("failed to download register.sh: %w", err)
 	}
 
 	// Validate script
@@ -83,11 +69,15 @@ func (e *Engine) registerCluster(ctx context.Context) error {
 		return fmt.Errorf("cluster registration failed: %w", err)
 	}
 
-	// For self-signed, patch heartbeat script
+	// Ensure crontab has PATH so heartbeat cron can find kubectl/jq
+	RunWithTimeout(ctx, "patch-crontab-path", 5*time.Second,
+		"bash", "-c", `crontab -l 2>/dev/null | grep -q '^PATH=' || (echo 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'; crontab -l 2>/dev/null) | crontab -`)
+
+	// For self-signed, patch heartbeat script curl to skip cert verification
 	if e.cfg.SSL.Mode == "selfsigned" {
 		heartbeatPath := "/usr/local/bin/k3s-heartbeat.sh"
 		if _, err := os.Stat(heartbeatPath); err == nil {
-			RunWithTimeout(ctx, "patch-heartbeat", 5*time.Second,
+			RunWithTimeout(ctx, "patch-heartbeat-ssl", 5*time.Second,
 				"sed", "-i", "s|curl -s |curl -sk |g", heartbeatPath)
 		}
 	}

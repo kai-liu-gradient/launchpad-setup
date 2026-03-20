@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -38,7 +39,7 @@ func NewOpsReportTab(s *settingsmod.Settings) *OpsReportTab {
 func (t *OpsReportTab) Form() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Enable Ops Report").
 				Description("Send periodic operations reports to admins").
 				Value(&t.Enabled),

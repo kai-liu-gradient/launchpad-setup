@@ -7,7 +7,7 @@ import (
 )
 
 func TestNew_InitialState(t *testing.T) {
-	m := New([]string{"Step A", "Step B", "Step C"})
+	m := newTestModel([]string{"Step A", "Step B", "Step C"})
 	if len(m.steps) != 3 {
 		t.Errorf("steps count = %d, want 3", len(m.steps))
 	}
@@ -25,7 +25,7 @@ func TestNew_InitialState(t *testing.T) {
 }
 
 func TestUpdate_StepRunning(t *testing.T) {
-	m := New([]string{"Step A", "Step B"})
+	m := newTestModel([]string{"Step A", "Step B"})
 	updated, _ := m.Update(StepEventMsg{Step: "Step A", Status: engine.Running})
 	model := updated.(Model)
 	if model.steps[0].Status != engine.Running {
@@ -37,7 +37,7 @@ func TestUpdate_StepRunning(t *testing.T) {
 }
 
 func TestUpdate_StepDone(t *testing.T) {
-	m := New([]string{"Step A", "Step B"})
+	m := newTestModel([]string{"Step A", "Step B"})
 	updated, _ := m.Update(StepEventMsg{Step: "Step A", Status: engine.Done})
 	model := updated.(Model)
 	if model.steps[0].Status != engine.Done {
@@ -49,7 +49,7 @@ func TestUpdate_StepDone(t *testing.T) {
 }
 
 func TestUpdate_AllDone(t *testing.T) {
-	m := New([]string{"Step A", "Step B"})
+	m := newTestModel([]string{"Step A", "Step B"})
 	m1, _ := m.Update(StepEventMsg{Step: "Step A", Status: engine.Done})
 	m2, _ := m1.Update(StepEventMsg{Step: "Step B", Status: engine.Done})
 	model := m2.(Model)
@@ -59,7 +59,7 @@ func TestUpdate_AllDone(t *testing.T) {
 }
 
 func TestUpdate_StepFailed(t *testing.T) {
-	m := New([]string{"Step A"})
+	m := newTestModel([]string{"Step A"})
 	updated, _ := m.Update(StepEventMsg{
 		Step:   "Step A",
 		Status: engine.Failed,
@@ -75,7 +75,7 @@ func TestUpdate_StepFailed(t *testing.T) {
 }
 
 func TestView_NotEmpty(t *testing.T) {
-	m := New([]string{"Step A"})
+	m := newTestModel([]string{"Step A"})
 	view := m.View()
 	if view == "" {
 		t.Error("View should not be empty")
@@ -89,7 +89,7 @@ func TestView_NotEmpty(t *testing.T) {
 }
 
 func TestView_ShowsCompletion(t *testing.T) {
-	m := New([]string{"Step A"})
+	m := newTestModel([]string{"Step A"})
 	updated, _ := m.Update(StepEventMsg{Step: "Step A", Status: engine.Done})
 	model := updated.(Model)
 	view := model.View()
@@ -99,7 +99,7 @@ func TestView_ShowsCompletion(t *testing.T) {
 }
 
 func TestView_ShowsError(t *testing.T) {
-	m := New([]string{"Step A"})
+	m := newTestModel([]string{"Step A"})
 	updated, _ := m.Update(StepEventMsg{
 		Step:   "Step A",
 		Status: engine.Failed,
@@ -135,6 +135,10 @@ func TestStepView_Render(t *testing.T) {
 }
 
 // helpers
+
+func newTestModel(names []string) Model {
+	return New(names, nil)
+}
 
 var errTest = &testError{}
 

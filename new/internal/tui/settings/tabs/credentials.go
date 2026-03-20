@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -45,7 +46,7 @@ func credStatus(disabled bool) string {
 func (t *CredentialsTab) Form() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Claude Included — Disable").
 				Description("Disable the Claude Included credential").
 				Value(&t.ClaudeIncludedDisabled),
@@ -58,7 +59,7 @@ func (t *CredentialsTab) Form() *huh.Form {
 		).WithHideFunc(func() bool { return !t.ClaudeIncludedDisabled }),
 
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("ZAI Included — Disable").
 				Description("Disable the ZAI Included credential").
 				Value(&t.ZAIIncludedDisabled),
@@ -71,7 +72,7 @@ func (t *CredentialsTab) Form() *huh.Form {
 		).WithHideFunc(func() bool { return !t.ZAIIncludedDisabled }),
 
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Claude Paygo — Disable").
 				Description("Disable the Claude Paygo credential").
 				Value(&t.ClaudePaygoDisabled),
@@ -84,7 +85,7 @@ func (t *CredentialsTab) Form() *huh.Form {
 		).WithHideFunc(func() bool { return !t.ClaudePaygoDisabled }),
 
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("ZAI Paygo — Disable").
 				Description("Disable the ZAI Paygo credential").
 				Value(&t.ZAIPaygoDisabled),
@@ -97,7 +98,7 @@ func (t *CredentialsTab) Form() *huh.Form {
 		).WithHideFunc(func() bool { return !t.ZAIPaygoDisabled }),
 
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Gemini Paygo — Disable").
 				Description("Disable the Gemini Paygo credential").
 				Value(&t.GeminiPaygoDisabled),

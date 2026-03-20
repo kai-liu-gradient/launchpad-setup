@@ -24,7 +24,7 @@ func (t *OverviewTab) View() string {
 	}
 
 	ssoStatus := "disabled"
-	if cfg.SSO.EntraTenantID != "" {
+	if cfg.SSO.Enabled {
 		ssoStatus = "enabled"
 	}
 

@@ -9,7 +9,7 @@ import (
 func (e *Engine) startAppServices(ctx context.Context) error {
 	return RunWithTimeout(ctx, "start-services", 60*time.Second,
 		"docker", "compose", "-f", e.output+"/docker-compose.yml",
-		"up", "-d", "api", "ui", "router", "cron", "backup-worker", "gateway")
+		"up", "-d", "--force-recreate", "api", "ui", "router", "cron", "backup-worker", "gateway")
 }
 
 func (e *Engine) waitForAPIHealth(ctx context.Context) error {
@@ -27,7 +27,7 @@ func (e *Engine) waitForRouterHealth(ctx context.Context) error {
 func (e *Engine) startNginx(ctx context.Context) error {
 	if err := RunWithTimeout(ctx, "start-nginx", 30*time.Second,
 		"docker", "compose", "-f", e.output+"/docker-compose.yml",
-		"up", "-d", "nginx"); err != nil {
+		"up", "-d", "--force-recreate", "nginx"); err != nil {
 		return fmt.Errorf("starting nginx: %w", err)
 	}
 

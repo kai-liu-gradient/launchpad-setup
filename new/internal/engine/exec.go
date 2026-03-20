@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -25,6 +26,7 @@ func RunWithOutput(ctx context.Context, name string, timeout time.Duration, cmd 
 	defer cancel()
 
 	c := exec.CommandContext(child, cmd, args...)
+	c.Env = envWithKubeconfig()
 	var buf bytes.Buffer
 	c.Stdout = &buf
 	c.Stderr = &buf
@@ -33,6 +35,20 @@ func RunWithOutput(ctx context.Context, name string, timeout time.Duration, cmd 
 		return "", fmt.Errorf("%s: %w\n%s", name, err, buf.String())
 	}
 	return buf.String(), nil
+}
+
+// envWithKubeconfig returns the current environment with KUBECONFIG set to the
+// K3s kubeconfig path if it exists and KUBECONFIG is not already set.
+func envWithKubeconfig() []string {
+	env := os.Environ()
+	if os.Getenv("KUBECONFIG") != "" {
+		return env
+	}
+	const k3sKubeconfig = "/etc/rancher/k3s/k3s.yaml"
+	if _, err := os.Stat(k3sKubeconfig); err == nil {
+		env = append(env, "KUBECONFIG="+k3sKubeconfig)
+	}
+	return env
 }
 
 // DockerExec runs `docker compose exec -T {service} {cmd...}` inside composeDir
@@ -47,7 +63,6 @@ func DockerExec(ctx context.Context, composeDir, service string, cmd ...string) 
 	defer cancel()
 
 	c := exec.CommandContext(child, "docker", args...)
-	c.Dir = composeDir
 	var buf bytes.Buffer
 	c.Stdout = &buf
 	c.Stderr = &buf
@@ -70,7 +85,6 @@ func DockerRun(ctx context.Context, composeDir, service string, cmd ...string) (
 	defer cancel()
 
 	c := exec.CommandContext(child, "docker", args...)
-	c.Dir = composeDir
 	var buf bytes.Buffer
 	c.Stdout = &buf
 	c.Stderr = &buf

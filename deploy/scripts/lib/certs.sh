@@ -70,9 +70,10 @@ setup_letsencrypt() {
         --fullchain-file "${cert_dir}/fullchain.pem" \
         --reloadcmd "$reload_cmd" 2>/dev/null
 
-    # Create symlinks for wildcard paths (consistent with custom cert naming)
-    ln -sf "${cert_dir}/fullchain.pem" "${cert_dir}/wildcard-fullchain.pem"
-    ln -sf "${cert_dir}/privkey.pem" "${cert_dir}/wildcard-privkey.pem"
+    # Copy as wildcard certs (separate files — symlinks break inside Docker)
+    rm -f "${cert_dir}/wildcard-fullchain.pem" "${cert_dir}/wildcard-privkey.pem"
+    cp "${cert_dir}/fullchain.pem" "${cert_dir}/wildcard-fullchain.pem"
+    cp "${cert_dir}/privkey.pem" "${cert_dir}/wildcard-privkey.pem"
 }
 
 setup_selfsigned_certs() {
@@ -84,13 +85,18 @@ setup_selfsigned_certs() {
     openssl genrsa -out "${cert_dir}/ca.key" 2048 2>/dev/null
     openssl req -new -x509 -days 3650 -key "${cert_dir}/ca.key" \
         -out "${cert_dir}/ca.pem" \
-        -subj "/CN=AniLaunchpad Local CA" 2>/dev/null
+        -subj "/CN=AniLaunchpad Local CA" \
+        -addext "basicConstraints=critical,CA:TRUE" \
+        -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
 
     # Generate server key
     openssl genrsa -out "${cert_dir}/privkey.pem" 2048 2>/dev/null
 
     # Generate CSR with SAN (Subject Alternative Names)
+    local internal_ip
+    internal_ip=$(detect_internal_ip 2>/dev/null || echo "")
     local san="DNS:*.${DOMAIN},DNS:${DOMAIN},DNS:${LAUNCHPAD_DOMAIN},DNS:${GITEA_DOMAIN},DNS:localhost,IP:127.0.0.1"
+    [[ -n "$internal_ip" ]] && san="${san},IP:${internal_ip}"
     openssl req -new -key "${cert_dir}/privkey.pem" \
         -out "${cert_dir}/server.csr" \
         -subj "/CN=*.${DOMAIN}" 2>/dev/null
@@ -102,20 +108,15 @@ setup_selfsigned_certs() {
         -out "${cert_dir}/fullchain.pem" \
         -extfile <(printf "subjectAltName=%s" "$san") 2>/dev/null
 
-    # Wildcard symlinks
-    ln -sf "${cert_dir}/fullchain.pem" "${cert_dir}/wildcard-fullchain.pem"
-    ln -sf "${cert_dir}/privkey.pem" "${cert_dir}/wildcard-privkey.pem"
+    # Copy as wildcard certs (separate files — symlinks break inside Docker)
+    rm -f "${cert_dir}/wildcard-fullchain.pem" "${cert_dir}/wildcard-privkey.pem"
+    cp "${cert_dir}/fullchain.pem" "${cert_dir}/wildcard-fullchain.pem"
+    cp "${cert_dir}/privkey.pem" "${cert_dir}/wildcard-privkey.pem"
 
     # Cleanup temp files
     rm -f "${cert_dir}/server.csr" "${cert_dir}/ca.srl"
 
     log_ok "Self-signed certificate generated"
-    log_warn "Browser will show security warning. To trust locally:"
-    if [[ "$PLATFORM" == "Darwin" ]]; then
-        log_warn "  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ${cert_dir}/ca.pem"
-    else
-        log_warn "  sudo cp ${cert_dir}/ca.pem /usr/local/share/ca-certificates/anilaunchpad.crt && sudo update-ca-certificates"
-    fi
 }
 
 setup_custom_certs() {

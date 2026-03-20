@@ -2,6 +2,7 @@ package wizard
 
 import (
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Custom form field values — readable after form completion.
@@ -350,7 +351,7 @@ func NewCustomForm() *huh.Form {
 
 		// Group 6: Review — final confirmation
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Proceed with deployment?").
 				Description("Review your settings above and confirm to begin installation.").
 				Value(&customConfirm),

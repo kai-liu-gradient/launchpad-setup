@@ -26,3 +26,24 @@ spec:
         clone:
           namespace: kube-system
           name: launchpad-ca-cert
+    - name: sync-ca-bundle
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      generate:
+        synchronize: true
+        apiVersion: v1
+        kind: ConfigMap
+        name: launchpad-ca-bundle
+        namespace: "{{request.object.metadata.name}}"
+        clone:
+          namespace: kube-system
+          name: launchpad-ca-bundle

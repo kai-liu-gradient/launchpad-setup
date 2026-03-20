@@ -13,8 +13,8 @@ init_database() {
     local psql_base="docker compose -f $compose_file exec -T postgres psql -U postgres"
 
     # Create the launchpad database if it doesn't exist
-    $psql_base -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'launchpad'" | grep -q 1 \
-        || $psql_base -d postgres -c "CREATE DATABASE launchpad"
+    $psql_base -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'launchpad'" 2>/dev/null | grep -q 1 \
+        || $psql_base -d postgres -c "CREATE DATABASE launchpad" 2>&1 | verbose_filter
 
     local psql_cmd="$psql_base -d launchpad"
 
@@ -38,7 +38,7 @@ init_database() {
         local user="launchpad_${schemas[$i]}user"
         local pass="${passwords[$i]}"
 
-        $psql_cmd <<SQL
+        $psql_cmd <<SQL 2>&1 | verbose_filter
 CREATE SCHEMA IF NOT EXISTS ${schema};
 DO \$\$ BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${user}') THEN
@@ -55,7 +55,7 @@ SQL
     done
 
     # Create Gitea database
-    docker compose -f "$compose_file" exec -T postgres psql -U postgres <<SQL
+    docker compose -f "$compose_file" exec -T postgres psql -U postgres <<SQL 2>&1 | verbose_filter
 SELECT 'CREATE DATABASE gitea' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'gitea')\gexec
 DO \$\$ BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'gitea') THEN
@@ -66,7 +66,7 @@ GRANT ALL PRIVILEGES ON DATABASE gitea TO gitea;
 ALTER DATABASE gitea OWNER TO gitea;
 SQL
     # Grant schema-level permissions within gitea database
-    docker compose -f "$compose_file" exec -T postgres psql -U postgres -d gitea <<SQL
+    docker compose -f "$compose_file" exec -T postgres psql -U postgres -d gitea <<SQL 2>&1 | verbose_filter
 GRANT ALL ON SCHEMA public TO gitea;
 SQL
     log_ok "Gitea database"

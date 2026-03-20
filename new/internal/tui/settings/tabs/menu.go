@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -20,7 +21,7 @@ func NewMenuTab(s *settingsmod.Settings) *MenuTab {
 func (t *MenuTab) Form() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Docs Visible").
 				Description("Show the Docs link in the navigation menu").
 				Value(&t.DocsVisible),

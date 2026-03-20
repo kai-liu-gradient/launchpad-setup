@@ -11,12 +11,9 @@ ssh_exec() {
 sync_files() {
     local local_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
     echo -e "${YELLOW}Syncing files to ${TEST_SERVER}...${NC}"
-    $TEST_SCP -r "${local_dir}/deploy/" "root@${TEST_SERVER}:${TEST_DEPLOY_DIR}/deploy/" >/dev/null
-    $TEST_SCP -r "${local_dir}/files/" "root@${TEST_SERVER}:${TEST_DEPLOY_DIR}/files/" >/dev/null
-    # Also sync root setup.sh and root-level script copies
-    $TEST_SCP "${local_dir}/deploy/setup.sh" "root@${TEST_SERVER}:${TEST_DEPLOY_DIR}/setup.sh" >/dev/null 2>&1 || true
-    $TEST_SCP -r "${local_dir}/deploy/scripts/lib/" "root@${TEST_SERVER}:${TEST_DEPLOY_DIR}/scripts/lib/" >/dev/null 2>&1 || true
-    $TEST_SCP -r "${local_dir}/deploy/scripts/lang/" "root@${TEST_SERVER}:${TEST_DEPLOY_DIR}/scripts/lang/" >/dev/null 2>&1 || true
+    ssh_exec "mkdir -p ${TEST_DEPLOY_DIR}/deploy ${TEST_DEPLOY_DIR}/files" >/dev/null 2>&1 || true
+    $TEST_SCP -r "${local_dir}/deploy/"* "root@${TEST_SERVER}:${TEST_DEPLOY_DIR}/deploy/" >/dev/null
+    $TEST_SCP -r "${local_dir}/files/"* "root@${TEST_SERVER}:${TEST_DEPLOY_DIR}/files/" >/dev/null
     echo -e "${GREEN}Files synced${NC}"
 }
 
@@ -78,7 +75,7 @@ assert_http() {
 assert_healthy() {
     local service="$1"
     local status
-    status=$(ssh_exec "cd ${TEST_DEPLOY_DIR} && docker compose -f generated/docker-compose.yml ps --format json ${service}" 2>/dev/null \
+    status=$(ssh_exec "cd ${TEST_DEPLOY_DIR} && docker compose -f deploy/generated/docker-compose.yml ps --format json ${service}" 2>/dev/null \
         | grep -o '"Health":"[^"]*"' | cut -d'"' -f4)
     if [[ "$status" == "healthy" ]]; then
         test_pass "${service} is healthy"

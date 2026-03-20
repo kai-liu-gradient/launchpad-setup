@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Express form field values — readable after form completion.
@@ -31,7 +32,7 @@ func NewExpressForm() *huh.Form {
 				Value(&expressEmail).
 				Validate(emailValidator),
 
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Deploy with defaults?").
 				Description("Self-signed SSL, built-in K3s + PostgreSQL + Redis").
 				Value(&expressConfirm),

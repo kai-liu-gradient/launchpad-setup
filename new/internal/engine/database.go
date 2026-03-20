@@ -3,23 +3,13 @@ package engine
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 )
 
 func (e *Engine) startPostgres(ctx context.Context) error {
-	// Idempotency: check if already running and healthy
-	if out, err := RunWithOutput(ctx, "check-postgres", 10*time.Second,
-		"docker", "compose", "-f", e.output+"/docker-compose.yml",
-		"ps", "--format", "{{.Health}}", "postgres"); err == nil {
-		if strings.TrimSpace(out) == "healthy" {
-			return nil
-		}
-	}
-
 	if err := RunWithTimeout(ctx, "start-postgres", 30*time.Second,
 		"docker", "compose", "-f", e.output+"/docker-compose.yml",
-		"up", "-d", "postgres"); err != nil {
+		"up", "-d", "--force-recreate", "postgres"); err != nil {
 		return fmt.Errorf("starting postgres: %w", err)
 	}
 
@@ -27,18 +17,9 @@ func (e *Engine) startPostgres(ctx context.Context) error {
 }
 
 func (e *Engine) startRedis(ctx context.Context) error {
-	// Idempotency: check if already running and healthy
-	if out, err := RunWithOutput(ctx, "check-redis", 10*time.Second,
-		"docker", "compose", "-f", e.output+"/docker-compose.yml",
-		"ps", "--format", "{{.Health}}", "redis"); err == nil {
-		if strings.TrimSpace(out) == "healthy" {
-			return nil
-		}
-	}
-
 	if err := RunWithTimeout(ctx, "start-redis", 30*time.Second,
 		"docker", "compose", "-f", e.output+"/docker-compose.yml",
-		"up", "-d", "redis"); err != nil {
+		"up", "-d", "--force-recreate", "redis"); err != nil {
 		return fmt.Errorf("starting redis: %w", err)
 	}
 
@@ -50,23 +31,20 @@ func (e *Engine) initDatabases(ctx context.Context) error {
 		return nil // external mode: user manages DB
 	}
 
-	// Idempotency: check if schemas already exist
-	out, err := DockerExec(ctx, e.output, "postgres",
-		"psql", "-U", "postgres", "-d", "launchpad", "-t", "-c",
-		"SELECT count(*) FROM information_schema.schemata WHERE schema_name LIKE 'launchpad_%'")
-	if err == nil {
-		count := strings.TrimSpace(out)
-		if count == "6" {
-			return nil // already initialized
-		}
-	}
+	// --- Phase 1: Create databases (idempotent) ---
+	e.send(StepEvent{Step: "Initializing databases", Status: Running, Detail: "Creating databases"})
 
-	// Create launchpad database if not exists
+	// Create launchpad database
 	DockerExec(ctx, e.output, "postgres", //nolint:errcheck
 		"psql", "-U", "postgres", "-d", "postgres", "-c",
-		"SELECT 'CREATE DATABASE launchpad' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'launchpad')\\gexec")
+		"CREATE DATABASE launchpad")
 
-	// Create schemas and users
+	// Create gitea database
+	DockerExec(ctx, e.output, "postgres", //nolint:errcheck
+		"psql", "-U", "postgres", "-d", "postgres", "-c",
+		"CREATE DATABASE gitea")
+
+	// --- Phase 2: Create/update launchpad schemas and roles ---
 	type schemaInfo struct {
 		name     string
 		password string
@@ -88,6 +66,8 @@ CREATE SCHEMA IF NOT EXISTS %s;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '%s') THEN
         CREATE ROLE %s LOGIN PASSWORD '%s';
+    ELSE
+        ALTER ROLE %s WITH PASSWORD '%s';
     END IF;
 END $$;
 GRANT USAGE ON SCHEMA %s TO %s;
@@ -95,7 +75,9 @@ GRANT CREATE ON SCHEMA %s TO %s;
 ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT ALL ON TABLES TO %s;
 ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT ALL ON SEQUENCES TO %s;
 ALTER ROLE %s SET search_path TO %s, public;`,
-			schema, user, user, s.password,
+			schema,
+			user, user, s.password,
+			user, s.password,
 			schema, user, schema, user,
 			schema, user, schema, user,
 			user, schema)
@@ -104,27 +86,27 @@ ALTER ROLE %s SET search_path TO %s, public;`,
 		e.send(StepEvent{Step: "Initializing databases", Status: Running, Detail: "Schema: " + schema})
 	}
 
-	// Create Gitea database
+	// --- Phase 3: Create/update gitea role ---
+	e.send(StepEvent{Step: "Initializing databases", Status: Running, Detail: "Gitea database"})
+
 	giteaSQL := fmt.Sprintf(`
-SELECT 'CREATE DATABASE gitea' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'gitea')\gexec
 DO $$ BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'gitea') THEN
         CREATE ROLE gitea LOGIN PASSWORD '%s';
+    ELSE
+        ALTER ROLE gitea WITH PASSWORD '%s';
     END IF;
 END $$;
 GRANT ALL PRIVILEGES ON DATABASE gitea TO gitea;
-ALTER DATABASE gitea OWNER TO gitea;`, e.sec.DBPasswordGitea)
+ALTER DATABASE gitea OWNER TO gitea;`, e.sec.DBPasswordGitea, e.sec.DBPasswordGitea)
 	DockerExec(ctx, e.output, "postgres", //nolint:errcheck
 		"psql", "-U", "postgres", "-c", giteaSQL)
 
-	// Grant schema permissions in gitea database
 	DockerExec(ctx, e.output, "postgres", //nolint:errcheck
 		"psql", "-U", "postgres", "-d", "gitea", "-c",
 		"GRANT ALL ON SCHEMA public TO gitea;")
 
-	e.send(StepEvent{Step: "Initializing databases", Status: Running, Detail: "Gitea database"})
-
-	// Run Prisma migrations
+	// --- Phase 4: Prisma migrations (idempotent — db push is safe to re-run) ---
 	prismaSchemas := []struct {
 		schema  string
 		service string

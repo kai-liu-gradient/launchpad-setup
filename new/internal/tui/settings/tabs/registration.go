@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 )
 
@@ -29,11 +30,11 @@ func NewRegistrationTab(s *settingsmod.Settings) *RegistrationTab {
 func (t *RegistrationTab) Form() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Restrict Domain").
 				Description("Only allow sign-ups from specific email domains").
 				Value(&t.RestrictDomain),
-			huh.NewConfirm().
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Require Email Verification").
 				Description("Users must verify their email before accessing the platform").
 				Value(&t.RequireEmailVerification),
