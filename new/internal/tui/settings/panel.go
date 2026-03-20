@@ -7,8 +7,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/gradient8/launchpad/internal/tui/components"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
+	"github.com/gradient8/launchpad/internal/tui/components"
+	stabs "github.com/gradient8/launchpad/internal/tui/settings/tabs"
 )
 
 type ExitReason int
@@ -49,7 +50,18 @@ func New(s *settingsmod.Settings, activeItem int) Model {
 	}
 
 	tabs := []SettingsTab{
-		// Will be populated when all tabs are implemented
+		stabs.NewRegistrationTab(s),
+		stabs.NewPlansTab(s),
+		stabs.NewCredentialsTab(s),
+		stabs.NewProjectsTab(s),
+		stabs.NewAuthenticationTab(s),
+		stabs.NewWelcomeCreditsTab(s),
+		stabs.NewMenuTab(s),
+		stabs.NewYAMLBuilderTab(s),
+		stabs.NewAIMarketplaceTab(s),
+		stabs.NewOpsReportTab(s),
+		stabs.NewEmailSuppressionTab(s),
+		stabs.NewNoticesTab(s),
 	}
 
 	if activeItem < 0 || activeItem >= len(items) {
