@@ -1,3 +1,5 @@
 old/
+bin/
 .superpowers/
-tests/
+internal/importfiles/files/*.tar.gz
+internal/importfiles/files/*.yaml
