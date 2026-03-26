@@ -13,38 +13,27 @@ import (
 )
 
 func newUpgradeCmd() *cobra.Command {
-	var (
-		flagVersion string
-		flagDir     string
-	)
+	var flagDir string
 
 	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade AniLaunchpad to a new version",
-		Long:  "Pull new images and restart services for the specified version.",
+		Long:  "Pull new images and restart services.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpgrade(flagDir, flagVersion)
+			return runUpgrade(flagDir)
 		},
 	}
 
-	cmd.Flags().StringVar(&flagVersion, "version", "", "Target version to upgrade to")
 	cmd.Flags().StringVar(&flagDir, "dir", ".", "Installation directory")
 
 	return cmd
 }
 
-func runUpgrade(dir, version string) error {
+func runUpgrade(dir string) error {
 	cfgPath := filepath.Join(dir, ".setup.yaml")
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return fmt.Errorf("loading config from %s: %w", cfgPath, err)
-	}
-
-	if version != "" {
-		cfg.Images.DefaultVersion = version
-		if err := config.Save(cfg, cfgPath); err != nil {
-			return fmt.Errorf("saving updated config: %w", err)
-		}
 	}
 
 	// Load secrets for template rendering

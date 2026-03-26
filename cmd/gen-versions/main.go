@@ -20,7 +20,6 @@ import (
 // nameMap translates KEY names from versions.conf to Go constant names.
 var nameMap = map[string]string{
 	"IMAGE_REGISTRY":      "DefaultImageRegistry",
-	"IMAGE_VERSION":       "DefaultImageVersion",
 	"IMAGE_VERSION_API":   "DefaultAPIVersion",
 	"IMAGE_VERSION_UI":    "DefaultUIVersion",
 	"IMAGE_VERSION_ROUTER":  "DefaultRouterVersion",
@@ -32,7 +31,6 @@ var nameMap = map[string]string{
 // file is deterministic and matches the canonical key order.
 var orderedKeys = []string{
 	"IMAGE_REGISTRY",
-	"IMAGE_VERSION",
 	"IMAGE_VERSION_API",
 	"IMAGE_VERSION_UI",
 	"IMAGE_VERSION_ROUTER",

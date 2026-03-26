@@ -8,16 +8,18 @@ import (
 )
 
 type KubernetesTab struct {
-	Mode       string
-	Kubeconfig string
-	Context    string
+	Mode           string
+	InstallIngress bool
+	Kubeconfig     string
+	Context        string
 }
 
 func NewKubernetesTab(cfg *config.Config) *KubernetesTab {
 	return &KubernetesTab{
-		Mode:       cfg.Kubernetes.Mode,
-		Kubeconfig: cfg.Kubernetes.Kubeconfig,
-		Context:    cfg.Kubernetes.Context,
+		Mode:           cfg.Kubernetes.Mode,
+		InstallIngress: cfg.Kubernetes.InstallIngress,
+		Kubeconfig:     cfg.Kubernetes.Kubeconfig,
+		Context:        cfg.Kubernetes.Context,
 	}
 }
 
@@ -41,6 +43,10 @@ func (t *KubernetesTab) Form() *huh.Form {
 				Title("Kube context").
 				Placeholder("my-cluster").
 				Value(&t.Context),
+			huh.NewConfirm().
+				Title("Install Ingress-Nginx?").
+				Description("Required for routing traffic to project pods").
+				Value(&t.InstallIngress),
 		).WithHideFunc(func() bool { return t.Mode != "external" }),
 	)
 }
@@ -48,8 +54,8 @@ func (t *KubernetesTab) Form() *huh.Form {
 func (t *KubernetesTab) View() string {
 	s := fmt.Sprintf("  Mode: %s", t.Mode)
 	if t.Mode == "external" {
-		s += fmt.Sprintf("\n  Kubeconfig: %s\n  Context:    %s",
-			displayValue(t.Kubeconfig), displayValue(t.Context))
+		s += fmt.Sprintf("\n  Kubeconfig: %s\n  Context:    %s\n  Install Ingress-Nginx: %v",
+			displayValue(t.Kubeconfig), displayValue(t.Context), t.InstallIngress)
 	}
 	return s
 }
@@ -58,4 +64,9 @@ func (t *KubernetesTab) Apply(cfg *config.Config) {
 	cfg.Kubernetes.Mode = t.Mode
 	cfg.Kubernetes.Kubeconfig = t.Kubeconfig
 	cfg.Kubernetes.Context = t.Context
+	if t.Mode == "builtin" {
+		cfg.Kubernetes.InstallIngress = true
+	} else {
+		cfg.Kubernetes.InstallIngress = t.InstallIngress
+	}
 }

@@ -27,13 +27,15 @@ func (e *Engine) BuildStepList() []Step {
 	// 3. Always: Generating SSL certificates
 	steps = append(steps, Step{Name: "Generating SSL certificates", Fn: e.generateCerts})
 
-	// 4. If K8s mode == "builtin": Installing Ingress-Nginx
-	if e.cfg.Kubernetes.Mode == "builtin" {
+	// 4. If InstallIngress enabled: Installing Ingress-Nginx
+	if e.cfg.Kubernetes.InstallIngress {
 		steps = append(steps, Step{Name: "Installing Ingress-Nginx", Fn: e.installIngressNginx})
 	}
 
-	// 5. Always: Configuring CoreDNS
-	steps = append(steps, Step{Name: "Configuring CoreDNS", Fn: e.configureCoreDNS})
+	// 5. If SSL mode == "selfsigned": Configuring CoreDNS
+	if e.cfg.SSL.Mode == "selfsigned" {
+		steps = append(steps, Step{Name: "Configuring CoreDNS", Fn: e.configureCoreDNS})
+	}
 
 	// 6. If SSL mode == "selfsigned": Setting up Kyverno + CA distribution
 	if e.cfg.SSL.Mode == "selfsigned" {
@@ -70,9 +72,9 @@ func (e *Engine) BuildStepList() []Step {
 	// 15. Always: Starting Nginx
 	steps = append(steps, Step{Name: "Starting Nginx", Fn: e.startNginx})
 
-	// 16. If K8s mode == "builtin": Configuring /etc/hosts, Configuring dnsmasq
+	// 16. If SSL mode == "selfsigned": Configuring /etc/hosts, Configuring dnsmasq
 	// (must happen before register/import so curl can resolve domains via nginx)
-	if e.cfg.Kubernetes.Mode == "builtin" {
+	if e.cfg.SSL.Mode == "selfsigned" {
 		steps = append(steps, Step{Name: "Configuring /etc/hosts", Fn: e.configureEtcHosts})
 		steps = append(steps, Step{Name: "Configuring dnsmasq", Fn: e.configureDnsmasq})
 	}
@@ -173,14 +175,25 @@ func (e *Engine) installIngressNginx(ctx context.Context) error {
 }
 
 func (e *Engine) configureCoreDNS(ctx context.Context) error {
-	// Get ingress-nginx ClusterIP
-	clusterIP, err := RunWithOutput(ctx, "get-ingress-ip", 10*time.Second,
-		"kubectl", "get", "svc", "ingress-nginx-controller",
-		"-n", "ingress-nginx", "-o", "jsonpath={.spec.clusterIP}")
-	if err != nil {
-		return fmt.Errorf("getting ingress-nginx ClusterIP: %w", err)
+	// Get ingress-nginx ClusterIP — try common service names/namespaces
+	var clusterIP string
+	lookups := []struct{ ns, svc string }{
+		{"ingress-nginx", "ingress-nginx-controller"},
+		{"kube-system", "ingress-nginx-controller"},
+		{"ingress", "ingress-nginx-controller"},
 	}
-	clusterIP = strings.TrimSpace(clusterIP)
+	for _, l := range lookups {
+		out, err := RunWithOutput(ctx, "get-ingress-ip", 10*time.Second,
+			"kubectl", "get", "svc", l.svc,
+			"-n", l.ns, "-o", "jsonpath={.spec.clusterIP}")
+		if err == nil && strings.TrimSpace(out) != "" {
+			clusterIP = strings.TrimSpace(out)
+			break
+		}
+	}
+	if clusterIP == "" {
+		return fmt.Errorf("could not find ingress-nginx controller service in any namespace")
+	}
 
 	// Re-render CoreDNS template with the actual IngressClusterIP
 	runtimePath := filepath.Join(e.output, ".runtime.yaml")

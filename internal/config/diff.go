@@ -114,7 +114,7 @@ func (d *ConfigDiff) AffectedServices() []string {
 			case "Images.Gitea":
 				add("gitea")
 			default:
-				// Registry or DefaultVersion change affects all image-based services.
+				// Registry change affects all image-based services.
 				add("nginx", "api", "ui", "router", "gateway", "gitea")
 			}
 		}

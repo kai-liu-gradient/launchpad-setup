@@ -25,9 +25,8 @@ type Config struct {
 
 // ImageConfig specifies container image registry and per-service overrides.
 type ImageConfig struct {
-	Registry       string `yaml:"registry"`
-	DefaultVersion string `yaml:"default_version"`
-	API            string `yaml:"api,omitempty"`
+	Registry string `yaml:"registry"`
+	API      string `yaml:"api,omitempty"`
 	UI             string `yaml:"ui,omitempty"`
 	Router         string `yaml:"router,omitempty"`
 	Gateway        string `yaml:"gateway,omitempty"`
@@ -54,6 +53,7 @@ type DBConfig struct {
 // K8sConfig controls Kubernetes cluster provisioning.
 type K8sConfig struct {
 	Mode           string `yaml:"mode"`
+	InstallIngress bool   `yaml:"install_ingress"`
 	Kubeconfig     string `yaml:"kubeconfig,omitempty"`
 	Context        string `yaml:"context,omitempty"`
 	StorageClass   string `yaml:"storage_class,omitempty"`
@@ -137,8 +137,7 @@ func DefaultConfig(domain string) *Config {
 		Subdomain:  "launchpad",
 		AdminEmail: "admin@" + domain,
 		Images: ImageConfig{
-			Registry:       DefaultImageRegistry,
-			DefaultVersion: DefaultImageVersion,
+			Registry: DefaultImageRegistry,
 		},
 		SSL: SSLConfig{
 			Mode: "selfsigned",
@@ -147,7 +146,8 @@ func DefaultConfig(domain string) *Config {
 			Mode: "builtin",
 		},
 		Kubernetes: K8sConfig{
-			Mode: "builtin",
+			Mode:           "builtin",
+			InstallIngress: true,
 		},
 		Storage: StorageConfig{
 			Mode: "local",

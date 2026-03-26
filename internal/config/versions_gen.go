@@ -3,9 +3,8 @@ package config
 
 const (
 	DefaultImageRegistry  = "swr.ap-southeast-1.myhuaweicloud.com/ghisha"
-	DefaultImageVersion   = "2.0.3"
-	DefaultAPIVersion     = "2.0.3"
-	DefaultUIVersion      = "2.0.3"
+	DefaultAPIVersion     = "2.1.6"
+	DefaultUIVersion      = "2.1.5"
 	DefaultRouterVersion  = "1.16.2"
 	DefaultGatewayVersion = "1.18.7"
 	DefaultGiteaVersion   = "1.25-rootless"

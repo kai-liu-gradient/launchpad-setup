@@ -22,6 +22,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Kubernetes.Mode != "builtin" {
 		t.Errorf("Kubernetes.Mode = %q, want %q", cfg.Kubernetes.Mode, "builtin")
 	}
+	if !cfg.Kubernetes.InstallIngress {
+		t.Error("Kubernetes.InstallIngress should default to true")
+	}
 	if cfg.Storage.Mode != "local" {
 		t.Errorf("Storage.Mode = %q, want %q", cfg.Storage.Mode, "local")
 	}
