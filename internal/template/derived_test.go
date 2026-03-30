@@ -78,3 +78,59 @@ func TestComputeDerived_ImageRefs(t *testing.T) {
 		}
 	}
 }
+
+func TestComputeDerived_GiteaSubdomainOverride(t *testing.T) {
+	cfg := testConfig()
+	sec := testSecrets()
+
+	// Default: gitea domain uses subdomain-gitea pattern
+	d := ComputeDerived(cfg, sec)
+	if d.GiteaDomain != "launchpad-gitea.example.com" {
+		t.Errorf("default GiteaDomain = %q, want %q", d.GiteaDomain, "launchpad-gitea.example.com")
+	}
+
+	// Override: custom gitea subdomain
+	cfg.GiteaSubdomain = "git"
+	d = ComputeDerived(cfg, sec)
+	if d.GiteaDomain != "git.example.com" {
+		t.Errorf("overridden GiteaDomain = %q, want %q", d.GiteaDomain, "git.example.com")
+	}
+	if d.GiteaURL != "https://git.example.com" {
+		t.Errorf("overridden GiteaURL = %q, want %q", d.GiteaURL, "https://git.example.com")
+	}
+}
+
+func TestComputeDerived_ProjectDomain(t *testing.T) {
+	cfg := testConfig()
+	sec := testSecrets()
+
+	// Default: ProjectDomain empty → IngressDomain == Domain
+	d := ComputeDerived(cfg, sec)
+	if d.IngressDomain != "example.com" {
+		t.Errorf("default IngressDomain = %q, want %q", d.IngressDomain, "example.com")
+	}
+	if d.ExternalDomain != "example.com" {
+		t.Errorf("default ExternalDomain = %q, want %q", d.ExternalDomain, "example.com")
+	}
+	if d.DomainEscaped != `example\.com` {
+		t.Errorf("default DomainEscaped = %q, want %q", d.DomainEscaped, `example\.com`)
+	}
+
+	// Override: ProjectDomain set → IngressDomain uses it
+	cfg.Domain = "corp.example.com"
+	cfg.ProjectDomain = "example.com"
+	d = ComputeDerived(cfg, sec)
+	if d.IngressDomain != "example.com" {
+		t.Errorf("overridden IngressDomain = %q, want %q", d.IngressDomain, "example.com")
+	}
+	if d.ExternalDomain != "example.com" {
+		t.Errorf("overridden ExternalDomain = %q, want %q", d.ExternalDomain, "example.com")
+	}
+	if d.DomainEscaped != `example\.com` {
+		t.Errorf("overridden DomainEscaped = %q, want %q", d.DomainEscaped, `example\.com`)
+	}
+	// Platform domains still use cfg.Domain
+	if d.LaunchpadDomain != "launchpad.corp.example.com" {
+		t.Errorf("LaunchpadDomain = %q, want %q", d.LaunchpadDomain, "launchpad.corp.example.com")
+	}
+}

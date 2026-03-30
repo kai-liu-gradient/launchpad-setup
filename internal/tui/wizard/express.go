@@ -10,8 +10,10 @@ import (
 
 // Express form field values — readable after form completion.
 var (
-	expressDomain  string
-	expressConfirm bool
+	expressDomain        string
+	expressProjectDomain string
+	expressAdminEmail    string
+	expressConfirm       bool
 )
 
 // NewExpressForm creates a huh.Form for the express setup path.
@@ -24,6 +26,18 @@ func NewExpressForm() *huh.Form {
 				Placeholder("example.com").
 				Value(&expressDomain).
 				Validate(domainValidator),
+
+			huh.NewInput().
+				Title("Project Domain (optional)").
+				Description("Wildcard domain for project pods. Leave empty to use Domain.").
+				Placeholder("example.com").
+				Value(&expressProjectDomain),
+
+			huh.NewInput().
+				Title("Admin Email (optional)").
+				Description("Leave empty to use admin@{domain}").
+				Placeholder("admin@example.com").
+				Value(&expressAdminEmail),
 
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Deploy with defaults?").

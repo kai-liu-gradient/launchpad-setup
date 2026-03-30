@@ -56,27 +56,31 @@ type DerivedValues struct {
 	GiteaGitSSH       string // git@{subdomain}-gitea.{domain}:2222
 	EntraRedirectURI  string // https://{subdomain}.{domain}/api/v1/auth/microsoft/callback
 	ANICodeReleaseURL string // https://{subdomain}-gitea.{domain}/launchpad/ani-code/archive/main.tar.gz
-	DomainEscaped     string // domain with dots escaped for regex (e.g. example\.com)
-	KubeconfigPath    string // resolved kubeconfig path for docker-compose volume mount
+	DomainEscaped     string   // domain with dots escaped for regex (e.g. example\.com)
+	AllowedDomains    []string // registration whitelist domains (Config.Domain + admin email domain)
+	KubeconfigPath    string   // resolved kubeconfig path for docker-compose volume mount
 }
 
 // ComputeDerived derives all template values from the given Config and Secrets.
 func ComputeDerived(cfg *config.Config, sec *secrets.Secrets) *DerivedValues {
 	launchpadDomain := cfg.Subdomain + "." + cfg.Domain
 	giteaDomain := cfg.Subdomain + "-gitea." + cfg.Domain
+	if cfg.GiteaSubdomain != "" {
+		giteaDomain = cfg.GiteaSubdomain + "." + cfg.Domain
+	}
 
 	d := &DerivedValues{}
 
 	// Domains (convenience fields)
 	d.LaunchpadDomain = launchpadDomain
 	d.GiteaDomain = giteaDomain
-	d.IngressDomain = cfg.Domain
+	d.IngressDomain = cfg.ResolvedProjectDomain()
 
 	// URLs
 	d.DashboardURL = "https://" + launchpadDomain
 	d.GiteaURL = "https://" + giteaDomain
 	d.APIURL = "https://" + launchpadDomain + ":6804"
-	d.ExternalDomain = cfg.Domain
+	d.ExternalDomain = cfg.ResolvedProjectDomain()
 	d.PublicURL = "https://" + launchpadDomain
 	d.CORSOrigins = "https://" + launchpadDomain
 	d.InternalAPIURL = "https://" + launchpadDomain + "/api"
@@ -125,7 +129,16 @@ func ComputeDerived(cfg *config.Config, sec *secrets.Secrets) *DerivedValues {
 	d.GiteaGitSSH = "git@" + giteaDomain + ":2222"
 	d.EntraRedirectURI = "https://" + launchpadDomain + "/api/v1/auth/microsoft/callback"
 	d.ANICodeReleaseURL = "https://" + giteaDomain + "/launchpad/ani-code/archive/main.tar.gz"
-	d.DomainEscaped = strings.ReplaceAll(cfg.Domain, ".", "\\.")
+	d.DomainEscaped = strings.ReplaceAll(cfg.ResolvedProjectDomain(), ".", "\\.")
+
+	// Registration allowed domains: Config.Domain + admin email domain (deduplicated)
+	d.AllowedDomains = []string{cfg.Domain}
+	if parts := strings.SplitN(cfg.AdminEmail, "@", 2); len(parts) == 2 {
+		adminDomain := parts[1]
+		if adminDomain != cfg.Domain {
+			d.AllowedDomains = append(d.AllowedDomains, adminDomain)
+		}
+	}
 
 	// Kubeconfig path
 	if cfg.Kubernetes.Mode == "builtin" {

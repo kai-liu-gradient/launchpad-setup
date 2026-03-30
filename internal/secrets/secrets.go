@@ -89,7 +89,6 @@ func Generate() (*Secrets, error) {
 		&s.PostgresSuperuserPassword,
 		&s.RedisPassword,
 		&s.GatewayAPIKey,
-		&s.AdminPassword,
 	}
 	for _, f := range pwFields {
 		v, err := randBase64Safe(24)
@@ -98,6 +97,13 @@ func Generate() (*Secrets, error) {
 		}
 		*f = v
 	}
+
+	// Admin password needs special chars to satisfy API password policy
+	adminBase, err := randBase64Safe(20)
+	if err != nil {
+		return nil, err
+	}
+	s.AdminPassword = adminBase + "!@A1"
 
 	return s, nil
 }

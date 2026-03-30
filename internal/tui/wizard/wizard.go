@@ -138,11 +138,15 @@ func (m Model) updateExpress(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !expressConfirm {
 			// Switch to Custom panel, carry over the domain
 			cfg := config.DefaultConfig(expressDomain)
+			cfg.ProjectDomain = expressProjectDomain
+			applyExpressAdmin(cfg)
 			panel := newCustomPanel(cfg)
 			return panel, nil
 		}
 		m.done = true
 		m.result = config.DefaultConfig(expressDomain)
+		m.result.ProjectDomain = expressProjectDomain
+		applyExpressAdmin(m.result)
 		return m, tea.Quit
 	}
 
@@ -249,3 +253,11 @@ func (m Model) ActiveTab() int {
 func (m Model) Tabs() []EditableTab {
 	return m.tabList
 }
+
+// applyExpressAdmin applies express admin email/password overrides to the config.
+func applyExpressAdmin(cfg *config.Config) {
+	if strings.TrimSpace(expressAdminEmail) != "" {
+		cfg.AdminEmail = strings.TrimSpace(expressAdminEmail)
+	}
+}
+

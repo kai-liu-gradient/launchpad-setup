@@ -327,6 +327,38 @@ func TestRenderCoreDNS(t *testing.T) {
 	}
 }
 
+func TestRenderCoreDNS_ProjectDomain(t *testing.T) {
+	ctx := fixtureRenderContext()
+	ctx.Config.Domain = "corp.example.com"
+	ctx.Config.ProjectDomain = "example.com"
+	ctx.Derived = ComputeDerived(ctx.Config, ctx.Secrets)
+	ctx.Runtime.IngressClusterIP = "10.43.0.100"
+
+	outDir := t.TempDir()
+	if err := RenderAll(ctx, outDir); err != nil {
+		t.Fatalf("RenderAll failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(outDir, "coredns-custom.yaml"))
+	content := string(got)
+
+	// Specific zone should use platform domain
+	if !strings.Contains(content, "launchpad.corp.example.com:53") {
+		t.Error("coredns specific zone should use platform domain (corp.example.com)")
+	}
+	// Wildcard zone should use ProjectDomain, not Domain
+	if !strings.Contains(content, "example.com:53") {
+		t.Error("coredns wildcard zone should use project domain (example.com)")
+	}
+	// Wildcard zone block should start with "example.com:53 {", not "corp.example.com:53 {"
+	if strings.Contains(content, "\n    corp.example.com:53 {") {
+		t.Error("coredns wildcard zone should NOT use corp.example.com")
+	}
+	if !strings.Contains(content, `example\.com`) {
+		t.Error("coredns should contain escaped project domain for regex")
+	}
+}
+
 func TestRenderKyvernoStaticCopy(t *testing.T) {
 	ctx := fixtureRenderContext()
 	outDir := t.TempDir()

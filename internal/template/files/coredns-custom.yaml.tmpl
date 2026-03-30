@@ -18,9 +18,9 @@ data:
 
   # Wildcard subdomains → ingress-nginx ClusterIP (project pods)
   wildcard.server: |
-    {{ .Config.Domain }}:53 {
+    {{ .Derived.IngressDomain }}:53 {
         hosts {
-            {{ .Runtime.IngressClusterIP }} {{ .Config.Domain }}
+            {{ .Runtime.IngressClusterIP }} {{ .Derived.IngressDomain }}
             ttl 60
             fallthrough
         }

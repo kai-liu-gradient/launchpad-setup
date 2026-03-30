@@ -123,14 +123,31 @@ func runInstall(custom bool, configFile string, resume bool, dir string) error {
 			mode = wizard.Custom
 		}
 
-		wizardResult, err := runWizard(mode)
-		if err != nil {
-			return err
+		var wizardResult *config.Config
+		for {
+			result, err := runWizard(mode)
+			if err != nil {
+				return err
+			}
+			if result == nil {
+				fmt.Println("Installation cancelled.")
+				os.Exit(0)
+			}
+
+			// Domain preview: let user confirm or customize generated domains
+			preview, err := wizard.RunDomainPreview(result.Domain, result.Subdomain, result.ProjectDomain, result.AdminEmail)
+			if err != nil {
+				return fmt.Errorf("domain preview: %w", err)
+			}
+			if preview.GoBack {
+				continue // re-run wizard
+			}
+			result.Subdomain = preview.Subdomain
+			result.GiteaSubdomain = preview.GiteaSubdomain
+			wizardResult = result
+			break
 		}
-		if wizardResult == nil {
-			fmt.Println("Installation cancelled.")
-			os.Exit(0)
-		}
+
 		cfg = wizardResult
 
 		// Generate secrets
@@ -211,17 +228,26 @@ func deployWithProgress(cfg *config.Config, sec *secrets.Secrets, dir, outputDir
 	if subdomain == "" {
 		subdomain = "launchpad"
 	}
+	giteaSub := cfg.GiteaSubdomain
+	if giteaSub == "" {
+		giteaSub = subdomain + "-gitea"
+	}
 	dashboardURL := fmt.Sprintf("https://%s.%s", subdomain, cfg.Domain)
-	giteaURL := fmt.Sprintf("https://%s-gitea.%s", subdomain, cfg.Domain)
-	adminUser := "admin@" + cfg.Domain
+	giteaURL := fmt.Sprintf("https://%s.%s", giteaSub, cfg.Domain)
+	adminUser := cfg.AdminEmail
 
 	fmt.Println()
 	fmt.Println("  AniLaunchpad is ready!")
 	fmt.Println()
 	fmt.Printf("  Dashboard : %s\n", dashboardURL)
 	fmt.Printf("  Gitea     : %s\n", giteaURL)
+	fmt.Println()
+	fmt.Println("  ⚠️  Admin Credentials (SAVE THESE!):")
 	fmt.Printf("  Admin     : %s\n", adminUser)
 	fmt.Printf("  Password  : %s\n", sec.AdminPassword)
+	fmt.Println()
+	fmt.Println("  This password is auto-generated and will NOT be shown again.")
+	fmt.Println("  To retrieve later: cat .secrets.yaml | grep admin_password")
 	fmt.Println()
 
 	return nil

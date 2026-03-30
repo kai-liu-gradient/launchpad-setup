@@ -63,6 +63,9 @@ func (e *Engine) BuildStepList() []Step {
 	// 12. Always: Waiting for API health
 	steps = append(steps, Step{Name: "Waiting for API health", Fn: e.waitForAPIHealth})
 
+	// 12a. Always: Registering admin user
+	steps = append(steps, Step{Name: "Registering admin user", Fn: e.registerAdmin})
+
 	// 13. Always: Waiting for UI health
 	steps = append(steps, Step{Name: "Waiting for UI health", Fn: e.waitForUIHealth})
 

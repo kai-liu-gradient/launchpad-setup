@@ -58,7 +58,36 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("kubernetes.kubeconfig is required when kubernetes.mode is external")
 	}
 
+	// ProjectDomain must be a parent of Domain or equal to Domain.
+	if cfg.ProjectDomain != "" {
+		if cfg.ProjectDomain != cfg.Domain && !strings.HasSuffix(cfg.Domain, "."+cfg.ProjectDomain) {
+			return fmt.Errorf("project_domain %q must be a parent domain of domain %q (e.g. domain=corp.example.com, project_domain=example.com)", cfg.ProjectDomain, cfg.Domain)
+		}
+	}
+
+	// Domain suffix consistency: launchpad and gitea subdomains must share
+	// the same base domain suffix.
+	if cfg.GiteaSubdomain != "" {
+		launchpadFQDN := cfg.Subdomain + "." + cfg.Domain
+		giteaFQDN := cfg.GiteaSubdomain + "." + cfg.Domain
+		launchpadSuffix := domainSuffix(launchpadFQDN)
+		giteaSuffix := domainSuffix(giteaFQDN)
+		if launchpadSuffix != giteaSuffix {
+			return fmt.Errorf("domain suffix mismatch: launchpad (%s) and gitea (%s) must share the same base domain suffix", launchpadSuffix, giteaSuffix)
+		}
+	}
+
 	return nil
+}
+
+// domainSuffix extracts the base domain (last two labels) from a FQDN.
+// For example, "launchpad.example.com" returns "example.com".
+func domainSuffix(fqdn string) string {
+	parts := strings.Split(fqdn, ".")
+	if len(parts) <= 2 {
+		return fqdn
+	}
+	return strings.Join(parts[len(parts)-2:], ".")
 }
 
 // formatValidationErrors turns go-playground/validator errors into a

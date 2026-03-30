@@ -74,3 +74,69 @@ func TestValidate_InvalidK8sMode(t *testing.T) {
 		t.Error("invalid K8s mode should fail validation")
 	}
 }
+
+func TestValidate_GiteaSubdomainSameSuffix(t *testing.T) {
+	cfg := DefaultConfig("example.com")
+	cfg.GiteaSubdomain = "git"
+	if err := Validate(cfg); err != nil {
+		t.Errorf("gitea subdomain with same domain suffix should pass: %v", err)
+	}
+}
+
+func TestValidate_GiteaSubdomainEmpty(t *testing.T) {
+	cfg := DefaultConfig("example.com")
+	cfg.GiteaSubdomain = ""
+	if err := Validate(cfg); err != nil {
+		t.Errorf("empty gitea subdomain (default) should pass: %v", err)
+	}
+}
+
+func TestValidate_ProjectDomainParent(t *testing.T) {
+	cfg := DefaultConfig("corp.example.com")
+	cfg.ProjectDomain = "example.com"
+	if err := Validate(cfg); err != nil {
+		t.Errorf("parent domain should pass: %v", err)
+	}
+}
+
+func TestValidate_ProjectDomainSame(t *testing.T) {
+	cfg := DefaultConfig("example.com")
+	cfg.ProjectDomain = "example.com"
+	if err := Validate(cfg); err != nil {
+		t.Errorf("same domain should pass: %v", err)
+	}
+}
+
+func TestValidate_ProjectDomainEmpty(t *testing.T) {
+	cfg := DefaultConfig("example.com")
+	cfg.ProjectDomain = ""
+	if err := Validate(cfg); err != nil {
+		t.Errorf("empty project domain should pass: %v", err)
+	}
+}
+
+func TestValidate_ProjectDomainUnrelated(t *testing.T) {
+	cfg := DefaultConfig("corp.example.com")
+	cfg.ProjectDomain = "other.com"
+	if err := Validate(cfg); err == nil {
+		t.Error("unrelated project domain should fail validation")
+	}
+}
+
+func TestDomainSuffix(t *testing.T) {
+	tests := []struct {
+		fqdn string
+		want string
+	}{
+		{"launchpad.example.com", "example.com"},
+		{"example.com", "example.com"},
+		{"app.dev.example.com", "example.com"},
+		{"a.b.c.d.com", "d.com"},
+	}
+	for _, tt := range tests {
+		got := domainSuffix(tt.fqdn)
+		if got != tt.want {
+			t.Errorf("domainSuffix(%q) = %q, want %q", tt.fqdn, got, tt.want)
+		}
+	}
+}

@@ -61,9 +61,12 @@ func (r *DeployResult) FormatResult() string {
 	b.WriteString(fmt.Sprintf("    Admin:      %s\n", r.AdminURL))
 	b.WriteString("\n")
 
-	b.WriteString("  Credentials:\n")
+	b.WriteString("  ⚠️  Admin Credentials (SAVE THESE!):\n")
 	b.WriteString(fmt.Sprintf("    Email:      %s\n", r.AdminEmail))
 	b.WriteString(fmt.Sprintf("    Password:   %s\n", r.AdminPass))
+	b.WriteString("\n")
+	b.WriteString("    ⮕  This password is auto-generated and will NOT be shown again.\n")
+	b.WriteString("    ⮕  To retrieve later: cat .secrets.yaml | grep admin_password\n")
 	b.WriteString("\n")
 
 	b.WriteString("  Kubernetes:\n")

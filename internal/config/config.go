@@ -6,9 +6,11 @@ package config
 
 // Config holds all user-configurable options for an AniLaunchpad deployment.
 type Config struct {
-	Domain      string         `yaml:"domain" validate:"required,fqdn"`
-	Subdomain   string         `yaml:"subdomain"`
-	AdminEmail  string         `yaml:"admin_email" validate:"required,email"`
+	Domain         string         `yaml:"domain" validate:"required,fqdn"`
+	ProjectDomain  string         `yaml:"project_domain,omitempty" validate:"omitempty,fqdn"`
+	Subdomain      string         `yaml:"subdomain"`
+	GiteaSubdomain string         `yaml:"giteaSubdomain,omitempty"`
+	AdminEmail     string         `yaml:"admin_email" validate:"required,email"`
 	Images      ImageConfig    `yaml:"images"`
 	SSL         SSLConfig      `yaml:"ssl"`
 	Database    DBConfig       `yaml:"database"`
@@ -21,6 +23,14 @@ type Config struct {
 	Stripe       StripeConfig       `yaml:"stripe,omitempty"`
 	Performance  PerfConfig         `yaml:"performance"`
 	Experimental ExperimentalConfig `yaml:"experimental,omitempty"`
+}
+
+// ResolvedProjectDomain returns ProjectDomain if set, otherwise Domain.
+func (c *Config) ResolvedProjectDomain() string {
+	if c.ProjectDomain != "" {
+		return c.ProjectDomain
+	}
+	return c.Domain
 }
 
 // ImageConfig specifies container image registry and per-service overrides.

@@ -72,6 +72,11 @@ func (e *Engine) generateSelfsignedCerts(ctx context.Context, certDir string) er
 	// Build SAN string
 	san := fmt.Sprintf("DNS:*.%s,DNS:%s,DNS:%s,DNS:%s,DNS:localhost,IP:127.0.0.1",
 		domain, domain, launchpadDomain, giteaDomain)
+	// Add ProjectDomain SANs when different from Domain
+	projectDomain := e.cfg.ResolvedProjectDomain()
+	if projectDomain != domain {
+		san += fmt.Sprintf(",DNS:*.%s,DNS:%s", projectDomain, projectDomain)
+	}
 	if hostIP != "127.0.0.1" {
 		san += ",IP:" + hostIP
 	}

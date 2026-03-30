@@ -3,7 +3,7 @@ version: 1
 
 registration:
   restrictDomain: true
-  allowedDomains: ["{{ .Config.Domain }}"]
+  allowedDomains: [{{ range $i, $d := .Derived.AllowedDomains }}{{ if $i }}, {{ end }}"{{ $d }}"{{ end }}]
   requireEmailVerification: true
   notice: "Registration is restricted to authorized domains"
   blockedNotice: "This email domain is not authorized for registration"
