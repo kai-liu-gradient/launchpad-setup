@@ -61,3 +61,7 @@ func (t *TelegramTab) Apply(cfg *config.Config) {
 	cfg.Telegram.BotToken = t.BotToken
 	cfg.Telegram.BotUsername = t.BotUsername
 }
+
+func (t *TelegramTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

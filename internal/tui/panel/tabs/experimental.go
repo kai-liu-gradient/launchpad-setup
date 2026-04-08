@@ -61,6 +61,10 @@ func (t *ExperimentalTab) Apply(cfg *config.Config) {
 	cfg.Experimental.DebugMode = t.DebugMode
 }
 
+func (t *ExperimentalTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}
+
 func boolDisplay(b bool) string {
 	if b {
 		return "enabled"

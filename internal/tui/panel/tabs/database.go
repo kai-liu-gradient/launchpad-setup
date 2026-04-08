@@ -138,3 +138,7 @@ func (t *DatabaseTab) Apply(cfg *config.Config) {
 		cfg.Database.URLs["gateway"] = t.DBGateway
 	}
 }
+
+func (t *DatabaseTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

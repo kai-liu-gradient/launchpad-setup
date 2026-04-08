@@ -69,3 +69,7 @@ func (t *PerformanceTab) Apply(cfg *config.Config) {
 		cfg.Performance.DBConnLimit = c
 	}
 }
+
+func (t *PerformanceTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

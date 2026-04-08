@@ -70,3 +70,7 @@ func (t *KubernetesTab) Apply(cfg *config.Config) {
 		cfg.Kubernetes.InstallIngress = t.InstallIngress
 	}
 }
+
+func (t *KubernetesTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

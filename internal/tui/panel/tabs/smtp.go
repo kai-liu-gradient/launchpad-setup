@@ -75,3 +75,7 @@ func (t *SMTPTab) Apply(cfg *config.Config) {
 	cfg.SMTP.Password = t.Password
 	cfg.SMTP.From = t.From
 }
+
+func (t *SMTPTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

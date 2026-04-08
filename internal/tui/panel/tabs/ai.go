@@ -113,3 +113,7 @@ func (t *AITab) Apply(cfg *config.Config) {
 	cfg.AI.PayGOGemini = t.PayGOGemini
 	cfg.AI.PayGOCodex = t.PayGOCodex
 }
+
+func (t *AITab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

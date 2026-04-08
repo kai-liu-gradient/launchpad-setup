@@ -49,3 +49,7 @@ func (t *StripeTab) Apply(cfg *config.Config) {
 	cfg.Stripe.WebhookSecret = t.WebhookSecret
 	cfg.Stripe.PublishableKey = t.PublishableKey
 }
+
+func (t *StripeTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

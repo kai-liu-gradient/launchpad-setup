@@ -112,3 +112,7 @@ func (t *StorageTab) Apply(cfg *config.Config) {
 	cfg.Storage.AzureConn = t.AzureConn
 	cfg.Storage.AzureContainer = t.AzureContainer
 }
+
+func (t *StorageTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

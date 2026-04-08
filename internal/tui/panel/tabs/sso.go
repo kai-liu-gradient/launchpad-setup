@@ -152,3 +152,7 @@ func (t *SSOTab) Apply(cfg *config.Config) {
 	cfg.SSO.EntraButtonIcon = t.EntraButtonIcon
 	cfg.SSO.EntraButtonText = t.EntraButtonText
 }
+
+func (t *SSOTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

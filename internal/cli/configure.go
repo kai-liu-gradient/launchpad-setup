@@ -11,7 +11,6 @@ import (
 	"github.com/gradient8/launchpad/internal/engine"
 	"github.com/gradient8/launchpad/internal/secrets"
 	"github.com/gradient8/launchpad/internal/template"
-	"github.com/gradient8/launchpad/internal/tui/components"
 	"github.com/gradient8/launchpad/internal/tui/panel"
 	"github.com/gradient8/launchpad/internal/tui/progress"
 	"github.com/spf13/cobra"
@@ -68,9 +67,7 @@ func runConfigure(dir string) error {
 		case panel.ExitEdit:
 			tabIdx := m.EditTabIndex()
 			tab := m.Tabs[tabIdx]
-			form := tab.Form()
-			form.WithKeyMap(components.FormKeyMap()).WithProgramOptions(tea.WithAltScreen())
-			if err := form.Run(); err == nil {
+			if err := tab.Edit(); err == nil {
 				tab.Apply(cfg)
 			}
 			// Loop back to panel with same active tab

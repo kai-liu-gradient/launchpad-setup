@@ -115,3 +115,7 @@ func (t *SSLTab) Apply(cfg *config.Config) {
 	cfg.SSL.CertPath = t.CertPath
 	cfg.SSL.KeyPath = t.KeyPath
 }
+
+func (t *SSLTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}

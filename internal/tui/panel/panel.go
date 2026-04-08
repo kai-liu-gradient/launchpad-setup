@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gradient8/launchpad/internal/config"
 	"github.com/gradient8/launchpad/internal/tui/components"
@@ -24,7 +23,7 @@ const (
 // EditableTab is a tab that can show a summary View and launch a Form for editing.
 type EditableTab interface {
 	View() string
-	Form() *huh.Form
+	Edit() error
 	Apply(cfg *config.Config)
 }
 

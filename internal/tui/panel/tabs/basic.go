@@ -60,3 +60,7 @@ func (t *BasicTab) Apply(cfg *config.Config) {
 	cfg.AdminEmail = "admin@" + t.Domain
 	cfg.Images.Registry = t.Registry
 }
+
+func (t *BasicTab) Edit() error {
+	return RunFormAsEdit(t.Form())
+}
