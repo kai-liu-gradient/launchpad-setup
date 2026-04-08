@@ -2,7 +2,6 @@ package tabs
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
@@ -11,14 +10,16 @@ import (
 
 type PlansTab struct {
 	EnforceFreePlan bool
-	Disabled        string
+	Disabled        []string
 	DisabledNotice  string
 }
 
 func NewPlansTab(s *settingsmod.Settings) *PlansTab {
+	disabled := make([]string, len(s.Plans.Disabled))
+	copy(disabled, s.Plans.Disabled)
 	return &PlansTab{
 		EnforceFreePlan: s.Plans.EnforceFreePlan,
-		Disabled:        strings.Join(s.Plans.Disabled, ","),
+		Disabled:        disabled,
 		DisabledNotice:  s.Plans.DisabledNotice,
 	}
 }
@@ -30,9 +31,15 @@ func (t *PlansTab) Form() *huh.Form {
 				Title("Enforce Free Plan").
 				Description("Force all users onto the free plan").
 				Value(&t.EnforceFreePlan),
-			huh.NewInput().
+			huh.NewMultiSelect[string]().
 				Title("Disabled Plans").
-				Description("Comma-separated list of plan IDs to disable").
+				Description("Select plans to disable").
+				Options(
+					huh.NewOption("Free", "free"),
+					huh.NewOption("Pro", "pro"),
+					huh.NewOption("Team", "team"),
+					huh.NewOption("Enterprise", "enterprise"),
+				).
 				Value(&t.Disabled),
 			huh.NewInput().
 				Title("Disabled Notice").
@@ -48,7 +55,7 @@ func (t *PlansTab) View() string {
 	return fmt.Sprintf(
 		"  Enforce Free Plan: %s\n  Disabled Plans:    %s\n  Disabled Notice:   %s",
 		boolDisplay(t.EnforceFreePlan),
-		displayValue(t.Disabled),
+		listDisplay(t.Disabled),
 		truncate(displayValue(t.DisabledNotice), 40),
 	)
 }
@@ -56,18 +63,5 @@ func (t *PlansTab) View() string {
 func (t *PlansTab) Apply(s *settingsmod.Settings) {
 	s.Plans.EnforceFreePlan = t.EnforceFreePlan
 	s.Plans.DisabledNotice = t.DisabledNotice
-
-	if t.Disabled == "" {
-		s.Plans.Disabled = nil
-	} else {
-		parts := strings.Split(t.Disabled, ",")
-		result := make([]string, 0, len(parts))
-		for _, p := range parts {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				result = append(result, p)
-			}
-		}
-		s.Plans.Disabled = result
-	}
+	s.Plans.Disabled = t.Disabled
 }
