@@ -40,6 +40,7 @@ func (t *PlansTab) Form() *huh.Form {
 					huh.NewOption("Team", "team"),
 					huh.NewOption("Enterprise", "enterprise"),
 				).
+				Filterable(true).
 				Value(&t.Disabled),
 			huh.NewInput().
 				Title("Disabled Notice").

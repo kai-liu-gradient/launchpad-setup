@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -8,6 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// ErrCancelled is returned by TreeForm.Run() when the user cancels (q/ctrl+c).
+var ErrCancelled = errors.New("user cancelled")
 
 // FieldType determines how a TreeField renders and edits.
 type FieldType int
@@ -47,6 +51,7 @@ type TreeForm struct {
 	editing    bool // True when a text field has active input
 	textInput  textinput.Model
 	quitting   bool
+	cancelled  bool // True when user pressed q or ctrl+c (cancel without save)
 }
 
 // NewTreeForm creates a TreeForm with the given title and nodes.
@@ -90,11 +95,16 @@ func (m TreeForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "q", "ctrl+c", "esc":
+		case "q", "ctrl+c":
+			m.quitting = true
+			m.cancelled = true
+			return m, tea.Quit
+
+		case "esc":
 			m.quitting = true
 			return m, tea.Quit
 
-		case "up", "k":
+		case "up", "k", "shift+tab":
 			if m.fieldFocus > 0 {
 				// Move up within child fields
 				m.fieldFocus--
@@ -105,11 +115,16 @@ func (m TreeForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Move to previous node
 				if m.cursor > 0 {
 					m.cursor--
-					m.fieldFocus = -1
+					prev := &m.nodes[m.cursor]
+					if prev.Expanded && len(prev.Fields) > 0 {
+						m.fieldFocus = len(prev.Fields) - 1
+					} else {
+						m.fieldFocus = -1
+					}
 				}
 			}
 
-		case "down", "j":
+		case "down", "j", "tab":
 			node := &m.nodes[m.cursor]
 			if m.fieldFocus == -1 && node.Expanded && len(node.Fields) > 0 {
 				// Move from node row into first child field
@@ -327,16 +342,22 @@ func (m TreeForm) View() string {
 	if m.editing {
 		b.WriteString(MutedStyle.Render("type to edit · enter/esc confirm"))
 	} else {
-		b.WriteString(MutedStyle.Render("↑↓ navigate · space toggle · enter expand · ←→ select · esc done"))
+		b.WriteString(MutedStyle.Render("↑↓/tab navigate · space toggle · enter expand · ←→ select · esc save · q cancel"))
 	}
 
 	return b.String()
 }
 
 // Run starts the TreeForm as a fullscreen bubbletea program and blocks
-// until the user exits. Returns nil on normal exit.
+// until the user exits. Returns nil on normal exit (esc), ErrCancelled on q/ctrl+c.
 func (m TreeForm) Run() error {
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	_, err := p.Run()
-	return err
+	final, err := p.Run()
+	if err != nil {
+		return err
+	}
+	if final.(TreeForm).cancelled {
+		return ErrCancelled
+	}
+	return nil
 }
