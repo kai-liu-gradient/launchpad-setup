@@ -28,6 +28,8 @@ func (t *YAMLBuilderTab) Form() *huh.Form {
 	)
 }
 
+func (t *YAMLBuilderTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *YAMLBuilderTab) View() string {
 	return fmt.Sprintf("  Allowed Users: %s", truncate(displayValue(t.AllowedUsers), 50))
 }

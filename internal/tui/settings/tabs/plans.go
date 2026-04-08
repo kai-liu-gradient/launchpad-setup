@@ -42,6 +42,8 @@ func (t *PlansTab) Form() *huh.Form {
 	)
 }
 
+func (t *PlansTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *PlansTab) View() string {
 	return fmt.Sprintf(
 		"  Enforce Free Plan: %s\n  Disabled Plans:    %s\n  Disabled Notice:   %s",

@@ -56,6 +56,8 @@ func (t *RegistrationTab) Form() *huh.Form {
 	)
 }
 
+func (t *RegistrationTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *RegistrationTab) View() string {
 	return fmt.Sprintf(
 		"  Restrict Domain:            %s\n  Allowed Domains:            %s\n  Require Email Verification: %s\n  Notice:                     %s\n  Blocked Notice:             %s",

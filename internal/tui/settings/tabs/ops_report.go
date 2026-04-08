@@ -65,6 +65,8 @@ func (t *OpsReportTab) Form() *huh.Form {
 	)
 }
 
+func (t *OpsReportTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *OpsReportTab) View() string {
 	if !t.Enabled {
 		return "  Status: disabled"

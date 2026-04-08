@@ -6,7 +6,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gradient8/launchpad/internal/settings"
-	"github.com/gradient8/launchpad/internal/tui/components"
 	settingsui "github.com/gradient8/launchpad/internal/tui/settings"
 	"github.com/spf13/cobra"
 )
@@ -52,9 +51,7 @@ func runSettings(dir string) error {
 				continue
 			}
 			tab := m.Tabs[tabIdx]
-			form := tab.Form()
-			form.WithKeyMap(components.FormKeyMap()).WithProgramOptions(tea.WithAltScreen())
-			if err := form.Run(); err == nil {
+			if err := tab.Edit(); err == nil {
 				tab.Apply(s)
 				if saveErr := settings.Save(s, settingsPath); saveErr != nil {
 					return fmt.Errorf("saving settings: %w", saveErr)

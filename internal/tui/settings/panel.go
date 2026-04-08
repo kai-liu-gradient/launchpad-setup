@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
 	"github.com/gradient8/launchpad/internal/tui/components"
@@ -22,7 +21,7 @@ const (
 // SettingsTab is the interface each settings group implements.
 type SettingsTab interface {
 	View() string
-	Form() *huh.Form
+	Edit() error
 	Apply(s *settingsmod.Settings)
 }
 

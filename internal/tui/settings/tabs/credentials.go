@@ -17,6 +17,9 @@ type CredentialsTab struct {
 	ClaudePaygoNotice      string
 	ZAIPaygoDisabled       bool
 	ZAIPaygoNotice         string
+	ZAIGhishaHidden        bool
+	ZAIGhishaDisabled      bool
+	ZAIGhishaNotice        string
 	GeminiPaygoDisabled    bool
 	GeminiPaygoNotice      string
 }
@@ -31,6 +34,9 @@ func NewCredentialsTab(s *settingsmod.Settings) *CredentialsTab {
 		ClaudePaygoNotice:      s.Credentials.ClaudePaygo.Notice,
 		ZAIPaygoDisabled:       s.Credentials.ZAIPaygo.Disabled,
 		ZAIPaygoNotice:         s.Credentials.ZAIPaygo.Notice,
+		ZAIGhishaHidden:        s.Credentials.ZAIGhisha.Hidden,
+		ZAIGhishaDisabled:      s.Credentials.ZAIGhisha.Disabled,
+		ZAIGhishaNotice:        s.Credentials.ZAIGhisha.Notice,
 		GeminiPaygoDisabled:    s.Credentials.GeminiPaygo.Disabled,
 		GeminiPaygoNotice:      s.Credentials.GeminiPaygo.Notice,
 	}
@@ -59,6 +65,12 @@ func (t *CredentialsTab) Form() *huh.Form {
 				Title("Disable ZAI PayGo").
 				Value(&t.ZAIPaygoDisabled),
 			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
+				Title("Hide ZAI Ghisha").
+				Value(&t.ZAIGhishaHidden),
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
+				Title("Disable ZAI Ghisha").
+				Value(&t.ZAIGhishaDisabled),
+			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
 				Title("Disable Gemini PayGo").
 				Value(&t.GeminiPaygoDisabled),
 		),
@@ -67,21 +79,25 @@ func (t *CredentialsTab) Form() *huh.Form {
 			huh.NewInput().Title("ZAI Included — Disabled Notice").Value(&t.ZAIIncludedNotice),
 			huh.NewInput().Title("Claude PayGo — Disabled Notice").Value(&t.ClaudePaygoNotice),
 			huh.NewInput().Title("ZAI PayGo — Disabled Notice").Value(&t.ZAIPaygoNotice),
+			huh.NewInput().Title("ZAI Ghisha — Disabled Notice").Value(&t.ZAIGhishaNotice),
 			huh.NewInput().Title("Gemini PayGo — Disabled Notice").Value(&t.GeminiPaygoNotice),
 		).WithHideFunc(func() bool {
 			return !t.ClaudeIncludedDisabled && !t.ZAIIncludedDisabled &&
-				!t.ClaudePaygoDisabled && !t.ZAIPaygoDisabled && !t.GeminiPaygoDisabled
+				!t.ClaudePaygoDisabled && !t.ZAIPaygoDisabled && !t.ZAIGhishaDisabled && !t.GeminiPaygoDisabled
 		}),
 	)
 }
 
+func (t *CredentialsTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *CredentialsTab) View() string {
 	return fmt.Sprintf(
-		"  Claude Included: %s\n  ZAI Included:    %s\n  Claude Paygo:    %s\n  ZAI Paygo:       %s\n  Gemini Paygo:    %s",
+		"  Claude Included: %s\n  ZAI Included:    %s\n  Claude Paygo:    %s\n  ZAI Paygo:       %s\n  ZAI Ghisha:      %s\n  Gemini Paygo:    %s",
 		credStatus(t.ClaudeIncludedDisabled),
 		credStatus(t.ZAIIncludedDisabled),
 		credStatus(t.ClaudePaygoDisabled),
 		credStatus(t.ZAIPaygoDisabled),
+		credStatus(t.ZAIGhishaDisabled),
 		credStatus(t.GeminiPaygoDisabled),
 	)
 }
@@ -102,6 +118,11 @@ func (t *CredentialsTab) Apply(s *settingsmod.Settings) {
 	s.Credentials.ZAIPaygo = settingsmod.CredentialToggle{
 		Disabled: t.ZAIPaygoDisabled,
 		Notice:   t.ZAIPaygoNotice,
+	}
+	s.Credentials.ZAIGhisha = settingsmod.CredentialToggle{
+		Hidden:   t.ZAIGhishaHidden,
+		Disabled: t.ZAIGhishaDisabled,
+		Notice:   t.ZAIGhishaNotice,
 	}
 	s.Credentials.GeminiPaygo = settingsmod.CredentialToggle{
 		Disabled: t.GeminiPaygoDisabled,

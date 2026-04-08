@@ -36,6 +36,8 @@ func (t *AIMarketplaceTab) Form() *huh.Form {
 	)
 }
 
+func (t *AIMarketplaceTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *AIMarketplaceTab) View() string {
 	return fmt.Sprintf(
 		"  Visible:           %s\n  Enabled Providers: %s",

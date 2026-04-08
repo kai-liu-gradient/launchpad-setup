@@ -35,6 +35,8 @@ func (t *ProjectsTab) Form() *huh.Form {
 	)
 }
 
+func (t *ProjectsTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *ProjectsTab) View() string {
 	return fmt.Sprintf(
 		"  Create Disabled: %s\n  Notice:          %s",

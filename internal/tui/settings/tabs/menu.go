@@ -29,6 +29,8 @@ func (t *MenuTab) Form() *huh.Form {
 	)
 }
 
+func (t *MenuTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *MenuTab) View() string {
 	return fmt.Sprintf("  Docs Visible: %s", boolDisplay(t.DocsVisible))
 }

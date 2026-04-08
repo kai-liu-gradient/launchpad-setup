@@ -105,6 +105,8 @@ func (t *AuthenticationTab) Form() *huh.Form {
 	)
 }
 
+func (t *AuthenticationTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *AuthenticationTab) View() string {
 	providers := ""
 	if t.GoogleEnabled {

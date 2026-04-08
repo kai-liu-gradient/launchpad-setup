@@ -29,6 +29,8 @@ func (t *EmailSuppressionTab) Form() *huh.Form {
 	)
 }
 
+func (t *EmailSuppressionTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *EmailSuppressionTab) View() string {
 	return fmt.Sprintf("  Suppressed Recipients: %s", truncate(displayValue(t.SuppressedRecipients), 50))
 }

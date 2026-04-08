@@ -140,6 +140,8 @@ func (t *NoticesTab) Form() *huh.Form {
 	)
 }
 
+func (t *NoticesTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func noticeStatus(enabled bool, title string) string {
 	if !enabled {
 		return "off"

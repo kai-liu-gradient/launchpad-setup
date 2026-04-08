@@ -60,6 +60,8 @@ func (t *WelcomeCreditsTab) Form() *huh.Form {
 	)
 }
 
+func (t *WelcomeCreditsTab) Edit() error { return RunFormAsEdit(t.Form()) }
+
 func (t *WelcomeCreditsTab) View() string {
 	if !t.Enabled {
 		return "  Status: disabled"
