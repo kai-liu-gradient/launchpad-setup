@@ -3,9 +3,8 @@ package tabs
 import (
 	"fmt"
 
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
+	"github.com/gradient8/launchpad/internal/tui/components"
 )
 
 type NoticesTab struct {
@@ -78,69 +77,98 @@ func NewNoticesTab(s *settingsmod.Settings) *NoticesTab {
 	}
 }
 
-var severityOptions = []huh.Option[string]{
-	huh.NewOption("Warning", "warning"),
-	huh.NewOption("Info", "info"),
-	huh.NewOption("Error", "error"),
-}
+func (t *NoticesTab) Edit() error {
+	severityOpts := []string{"warning", "info", "error"}
 
-func (t *NoticesTab) Form() *huh.Form {
-	return huh.NewForm(
-		// Page 1: toggle all 4 notices on/off
-		huh.NewGroup(
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Enable Project List Notice").
-				Value(&t.ProjectListEnabled),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Enable Coding Agent Notice").
-				Value(&t.CodingAgentEnabled),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Enable Billing Notice").
-				Value(&t.BillingEnabled),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Enable Credit Drawer Notice").
-				Value(&t.CreditDrawerEnabled),
-		),
-		// Page 2: Project List details (only if enabled)
-		huh.NewGroup(
-			huh.NewSelect[string]().Title("Project List — Severity").Options(severityOptions...).Value(&t.ProjectListSeverity),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).Title("Project List — Dismissible").Value(&t.ProjectListDismissible),
-			huh.NewInput().Title("Project List — Title").Value(&t.ProjectListTitle),
-			huh.NewInput().Title("Project List — Message").Value(&t.ProjectListMessage),
-			huh.NewInput().Title("Project List — Link URL").Value(&t.ProjectListLinkURL),
-			huh.NewInput().Title("Project List — Link Text").Value(&t.ProjectListLinkText),
-		).WithHideFunc(func() bool { return !t.ProjectListEnabled }),
-		// Page 3: Coding Agent details
-		huh.NewGroup(
-			huh.NewSelect[string]().Title("Coding Agent — Severity").Options(severityOptions...).Value(&t.CodingAgentSeverity),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).Title("Coding Agent — Dismissible").Value(&t.CodingAgentDismissible),
-			huh.NewInput().Title("Coding Agent — Title").Value(&t.CodingAgentTitle),
-			huh.NewInput().Title("Coding Agent — Message").Value(&t.CodingAgentMessage),
-			huh.NewInput().Title("Coding Agent — Link URL").Value(&t.CodingAgentLinkURL),
-			huh.NewInput().Title("Coding Agent — Link Text").Value(&t.CodingAgentLinkText),
-		).WithHideFunc(func() bool { return !t.CodingAgentEnabled }),
-		// Page 4: Billing details
-		huh.NewGroup(
-			huh.NewSelect[string]().Title("Billing — Severity").Options(severityOptions...).Value(&t.BillingSeverity),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).Title("Billing — Dismissible").Value(&t.BillingDismissible),
-			huh.NewInput().Title("Billing — Title").Value(&t.BillingTitle),
-			huh.NewInput().Title("Billing — Message").Value(&t.BillingMessage),
-			huh.NewInput().Title("Billing — Link URL").Value(&t.BillingLinkURL),
-			huh.NewInput().Title("Billing — Link Text").Value(&t.BillingLinkText),
-		).WithHideFunc(func() bool { return !t.BillingEnabled }),
-		// Page 5: Credit Drawer details
-		huh.NewGroup(
-			huh.NewSelect[string]().Title("Credit Drawer — Severity").Options(severityOptions...).Value(&t.CreditDrawerSeverity),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).Title("Credit Drawer — Dismissible").Value(&t.CreditDrawerDismissible),
-			huh.NewInput().Title("Credit Drawer — Title").Value(&t.CreditDrawerTitle),
-			huh.NewInput().Title("Credit Drawer — Message").Value(&t.CreditDrawerMessage),
-			huh.NewInput().Title("Credit Drawer — Link URL").Value(&t.CreditDrawerLinkURL),
-			huh.NewInput().Title("Credit Drawer — Link Text").Value(&t.CreditDrawerLinkText),
-		).WithHideFunc(func() bool { return !t.CreditDrawerEnabled }),
-	)
-}
+	nodes := []components.TreeNode{
+		{
+			Label: "Project List",
+			OnToggle: func() {
+				t.ProjectListEnabled = !t.ProjectListEnabled
+			},
+			Status: func() string {
+				if t.ProjectListEnabled {
+					return "enabled"
+				}
+				return "off"
+			},
+			Expanded: t.ProjectListEnabled,
+			Fields: []components.TreeField{
+				{Label: "Severity", Type: components.FieldSelect, SelectValue: &t.ProjectListSeverity, SelectOpts: severityOpts},
+				{Label: "Dismissible", Type: components.FieldToggle, BoolValue: &t.ProjectListDismissible},
+				{Label: "Title", Type: components.FieldText, TextValue: &t.ProjectListTitle},
+				{Label: "Message", Type: components.FieldText, TextValue: &t.ProjectListMessage},
+				{Label: "Link URL", Type: components.FieldText, TextValue: &t.ProjectListLinkURL},
+				{Label: "Link Text", Type: components.FieldText, TextValue: &t.ProjectListLinkText},
+			},
+		},
+		{
+			Label: "Coding Agent",
+			OnToggle: func() {
+				t.CodingAgentEnabled = !t.CodingAgentEnabled
+			},
+			Status: func() string {
+				if t.CodingAgentEnabled {
+					return "enabled"
+				}
+				return "off"
+			},
+			Expanded: t.CodingAgentEnabled,
+			Fields: []components.TreeField{
+				{Label: "Severity", Type: components.FieldSelect, SelectValue: &t.CodingAgentSeverity, SelectOpts: severityOpts},
+				{Label: "Dismissible", Type: components.FieldToggle, BoolValue: &t.CodingAgentDismissible},
+				{Label: "Title", Type: components.FieldText, TextValue: &t.CodingAgentTitle},
+				{Label: "Message", Type: components.FieldText, TextValue: &t.CodingAgentMessage},
+				{Label: "Link URL", Type: components.FieldText, TextValue: &t.CodingAgentLinkURL},
+				{Label: "Link Text", Type: components.FieldText, TextValue: &t.CodingAgentLinkText},
+			},
+		},
+		{
+			Label: "Billing",
+			OnToggle: func() {
+				t.BillingEnabled = !t.BillingEnabled
+			},
+			Status: func() string {
+				if t.BillingEnabled {
+					return "enabled"
+				}
+				return "off"
+			},
+			Expanded: t.BillingEnabled,
+			Fields: []components.TreeField{
+				{Label: "Severity", Type: components.FieldSelect, SelectValue: &t.BillingSeverity, SelectOpts: severityOpts},
+				{Label: "Dismissible", Type: components.FieldToggle, BoolValue: &t.BillingDismissible},
+				{Label: "Title", Type: components.FieldText, TextValue: &t.BillingTitle},
+				{Label: "Message", Type: components.FieldText, TextValue: &t.BillingMessage},
+				{Label: "Link URL", Type: components.FieldText, TextValue: &t.BillingLinkURL},
+				{Label: "Link Text", Type: components.FieldText, TextValue: &t.BillingLinkText},
+			},
+		},
+		{
+			Label: "Credit Drawer",
+			OnToggle: func() {
+				t.CreditDrawerEnabled = !t.CreditDrawerEnabled
+			},
+			Status: func() string {
+				if t.CreditDrawerEnabled {
+					return "enabled"
+				}
+				return "off"
+			},
+			Expanded: t.CreditDrawerEnabled,
+			Fields: []components.TreeField{
+				{Label: "Severity", Type: components.FieldSelect, SelectValue: &t.CreditDrawerSeverity, SelectOpts: severityOpts},
+				{Label: "Dismissible", Type: components.FieldToggle, BoolValue: &t.CreditDrawerDismissible},
+				{Label: "Title", Type: components.FieldText, TextValue: &t.CreditDrawerTitle},
+				{Label: "Message", Type: components.FieldText, TextValue: &t.CreditDrawerMessage},
+				{Label: "Link URL", Type: components.FieldText, TextValue: &t.CreditDrawerLinkURL},
+				{Label: "Link Text", Type: components.FieldText, TextValue: &t.CreditDrawerLinkText},
+			},
+		},
+	}
 
-func (t *NoticesTab) Edit() error { return RunFormAsEdit(t.Form()) }
+	return components.NewTreeForm("Notices", nodes).Run()
+}
 
 func noticeStatus(enabled bool, title string) string {
 	if !enabled {
