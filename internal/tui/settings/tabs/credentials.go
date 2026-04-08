@@ -3,9 +3,8 @@ package tabs
 import (
 	"fmt"
 
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 	settingsmod "github.com/gradient8/launchpad/internal/settings"
+	"github.com/gradient8/launchpad/internal/tui/components"
 )
 
 type CredentialsTab struct {
@@ -49,46 +48,91 @@ func credStatus(disabled bool) string {
 	return "active"
 }
 
-func (t *CredentialsTab) Form() *huh.Form {
-	return huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Disable Claude Included").
-				Value(&t.ClaudeIncludedDisabled),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Disable ZAI Included").
-				Value(&t.ZAIIncludedDisabled),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Disable Claude PayGo").
-				Value(&t.ClaudePaygoDisabled),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Disable ZAI PayGo").
-				Value(&t.ZAIPaygoDisabled),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Hide ZAI Ghisha").
-				Value(&t.ZAIGhishaHidden),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Disable ZAI Ghisha").
-				Value(&t.ZAIGhishaDisabled),
-			huh.NewConfirm().WithButtonAlignment(lipgloss.Left).
-				Title("Disable Gemini PayGo").
-				Value(&t.GeminiPaygoDisabled),
-		),
-		huh.NewGroup(
-			huh.NewInput().Title("Claude Included — Disabled Notice").Value(&t.ClaudeIncludedNotice),
-			huh.NewInput().Title("ZAI Included — Disabled Notice").Value(&t.ZAIIncludedNotice),
-			huh.NewInput().Title("Claude PayGo — Disabled Notice").Value(&t.ClaudePaygoNotice),
-			huh.NewInput().Title("ZAI PayGo — Disabled Notice").Value(&t.ZAIPaygoNotice),
-			huh.NewInput().Title("ZAI Ghisha — Disabled Notice").Value(&t.ZAIGhishaNotice),
-			huh.NewInput().Title("Gemini PayGo — Disabled Notice").Value(&t.GeminiPaygoNotice),
-		).WithHideFunc(func() bool {
-			return !t.ClaudeIncludedDisabled && !t.ZAIIncludedDisabled &&
-				!t.ClaudePaygoDisabled && !t.ZAIPaygoDisabled && !t.ZAIGhishaDisabled && !t.GeminiPaygoDisabled
-		}),
-	)
-}
+func (t *CredentialsTab) Edit() error {
+	nodes := []components.TreeNode{
+		{
+			Label: "Claude Included",
+			OnToggle: func() {
+				t.ClaudeIncludedDisabled = !t.ClaudeIncludedDisabled
+			},
+			Status: func() string {
+				return credStatus(t.ClaudeIncludedDisabled)
+			},
+			Expanded: t.ClaudeIncludedDisabled,
+			Fields: []components.TreeField{
+				{Label: "Notice", Type: components.FieldText, TextValue: &t.ClaudeIncludedNotice},
+			},
+		},
+		{
+			Label: "ZAI Included",
+			OnToggle: func() {
+				t.ZAIIncludedDisabled = !t.ZAIIncludedDisabled
+			},
+			Status: func() string {
+				return credStatus(t.ZAIIncludedDisabled)
+			},
+			Expanded: t.ZAIIncludedDisabled,
+			Fields: []components.TreeField{
+				{Label: "Notice", Type: components.FieldText, TextValue: &t.ZAIIncludedNotice},
+			},
+		},
+		{
+			Label: "Claude PayGo",
+			OnToggle: func() {
+				t.ClaudePaygoDisabled = !t.ClaudePaygoDisabled
+			},
+			Status: func() string {
+				return credStatus(t.ClaudePaygoDisabled)
+			},
+			Expanded: t.ClaudePaygoDisabled,
+			Fields: []components.TreeField{
+				{Label: "Notice", Type: components.FieldText, TextValue: &t.ClaudePaygoNotice},
+			},
+		},
+		{
+			Label: "ZAI PayGo",
+			OnToggle: func() {
+				t.ZAIPaygoDisabled = !t.ZAIPaygoDisabled
+			},
+			Status: func() string {
+				return credStatus(t.ZAIPaygoDisabled)
+			},
+			Expanded: t.ZAIPaygoDisabled,
+			Fields: []components.TreeField{
+				{Label: "Notice", Type: components.FieldText, TextValue: &t.ZAIPaygoNotice},
+			},
+		},
+		{
+			Label: "ZAI Ghisha",
+			OnToggle: func() {
+				t.ZAIGhishaDisabled = !t.ZAIGhishaDisabled
+			},
+			Status: func() string {
+				return credStatus(t.ZAIGhishaDisabled)
+			},
+			Expanded: t.ZAIGhishaDisabled,
+			Fields: []components.TreeField{
+				{Label: "Hidden", Type: components.FieldToggle, BoolValue: &t.ZAIGhishaHidden},
+				{Label: "Notice", Type: components.FieldText, TextValue: &t.ZAIGhishaNotice},
+			},
+		},
+		{
+			Label: "Gemini PayGo",
+			OnToggle: func() {
+				t.GeminiPaygoDisabled = !t.GeminiPaygoDisabled
+			},
+			Status: func() string {
+				return credStatus(t.GeminiPaygoDisabled)
+			},
+			Expanded: t.GeminiPaygoDisabled,
+			Fields: []components.TreeField{
+				{Label: "Notice", Type: components.FieldText, TextValue: &t.GeminiPaygoNotice},
+			},
+		},
+	}
 
-func (t *CredentialsTab) Edit() error { return RunFormAsEdit(t.Form()) }
+	return components.NewTreeForm("Credentials", nodes).Run()
+}
 
 func (t *CredentialsTab) View() string {
 	return fmt.Sprintf(
