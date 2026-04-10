@@ -15,14 +15,11 @@ func TestPreflightChecks_BuiltinRequiresHelmSkipsKubectl(t *testing.T) {
 	for _, c := range checks {
 		names[c.Name] = true
 	}
-	if !names["docker"] {
-		t.Error("builtin K8s should require docker")
-	}
-	if !names["curl"] {
-		t.Error("builtin K8s should require curl")
-	}
-	if !names["helm"] {
-		t.Error("builtin K8s should require helm")
+	required := []string{"docker", "curl", "bash", "git", "tar", "sed", "bc", "openssl", "crontab", "helm"}
+	for _, name := range required {
+		if !names[name] {
+			t.Errorf("builtin K8s should require %s", name)
+		}
 	}
 }
 

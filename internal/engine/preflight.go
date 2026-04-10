@@ -21,9 +21,17 @@ type ToolCheck struct {
 // kubectl; external K8s mode requires only kubectl.
 func RequiredTools(cfg *config.Config) []ToolCheck {
 	checks := []ToolCheck{
+		// Core tools
 		{Name: "docker", Required: true, CheckCmd: "docker", CheckArgs: []string{"--version"}},
 		{Name: "docker compose", Required: true, CheckCmd: "docker", CheckArgs: []string{"compose", "version"}},
 		{Name: "curl", Required: true, CheckCmd: "curl", CheckArgs: []string{"--version"}},
+		{Name: "bash", Required: true, CheckCmd: "bash", CheckArgs: []string{"--version"}},
+		{Name: "git", Required: true, CheckCmd: "git", CheckArgs: []string{"--version"}},
+		{Name: "tar", Required: true, CheckCmd: "tar", CheckArgs: []string{"--version"}},
+		{Name: "sed", Required: true, CheckCmd: "which", CheckArgs: []string{"sed"}},
+		{Name: "bc", Required: true, CheckCmd: "bc", CheckArgs: []string{"--version"}},
+		{Name: "openssl", Required: true, CheckCmd: "openssl", CheckArgs: []string{"version"}},
+		{Name: "crontab", Required: true, CheckCmd: "which", CheckArgs: []string{"crontab"}},
 	}
 
 	// helm is needed in both modes (builtin uses it for ingress-nginx, kyverno).
