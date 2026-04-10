@@ -12,46 +12,90 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type upgradeFlags struct {
+	dir            string
+	apiVersion     string
+	uiVersion      string
+	routerVersion  string
+	gatewayVersion string
+	giteaVersion   string
+}
+
 func newUpgradeCmd() *cobra.Command {
-	var flagDir string
+	f := &upgradeFlags{}
 
 	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade AniLaunchpad to a new version",
-		Long:  "Pull new images and restart services.",
+		Long:  "Pull new images and restart services. Optionally specify per-service versions.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpgrade(flagDir)
+			return runUpgrade(f)
 		},
 	}
 
-	cmd.Flags().StringVar(&flagDir, "dir", ".", "Installation directory")
+	cmd.Flags().StringVar(&f.dir, "dir", ".", "Installation directory")
+	cmd.Flags().StringVar(&f.apiVersion, "api-version", "", "API image version")
+	cmd.Flags().StringVar(&f.uiVersion, "ui-version", "", "UI image version")
+	cmd.Flags().StringVar(&f.routerVersion, "router-version", "", "Router image version")
+	cmd.Flags().StringVar(&f.gatewayVersion, "gateway-version", "", "Gateway image version")
+	cmd.Flags().StringVar(&f.giteaVersion, "gitea-version", "", "Gitea image version")
 
 	return cmd
 }
 
-func runUpgrade(dir string) error {
-	cfgPath := filepath.Join(dir, ".setup.yaml")
+func runUpgrade(f *upgradeFlags) error {
+	cfgPath := filepath.Join(f.dir, ".setup.yaml")
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return fmt.Errorf("loading config from %s: %w", cfgPath, err)
 	}
 
+	// Apply version flags if specified
+	changed := false
+	if f.apiVersion != "" {
+		cfg.Images.APIVersion = f.apiVersion
+		changed = true
+	}
+	if f.uiVersion != "" {
+		cfg.Images.UIVersion = f.uiVersion
+		changed = true
+	}
+	if f.routerVersion != "" {
+		cfg.Images.RouterVersion = f.routerVersion
+		changed = true
+	}
+	if f.gatewayVersion != "" {
+		cfg.Images.GatewayVersion = f.gatewayVersion
+		changed = true
+	}
+	if f.giteaVersion != "" {
+		cfg.Images.GiteaVersion = f.giteaVersion
+		changed = true
+	}
+
+	// Save updated config if versions were changed
+	if changed {
+		if err := config.Save(cfg, cfgPath); err != nil {
+			return fmt.Errorf("saving config: %w", err)
+		}
+	}
+
 	// Load secrets for template rendering
-	secPath := filepath.Join(dir, ".secrets.yaml")
+	secPath := filepath.Join(f.dir, ".secrets.yaml")
 	sec, err := secrets.Load(secPath)
 	if err != nil {
 		return fmt.Errorf("loading secrets from %s: %w", secPath, err)
 	}
 
 	// Re-render templates with updated config
-	outputDir := filepath.Join(dir, "generated")
+	outputDir := filepath.Join(f.dir, "generated")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 
 	derived := template.ComputeDerived(cfg, sec)
 
-	runtimePath := filepath.Join(dir, ".runtime.yaml")
+	runtimePath := filepath.Join(f.dir, ".runtime.yaml")
 	runtime, err := template.LoadRuntime(runtimePath)
 	if err != nil {
 		return fmt.Errorf("loading runtime values: %w", err)
