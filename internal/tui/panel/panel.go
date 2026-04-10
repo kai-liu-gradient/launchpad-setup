@@ -39,6 +39,7 @@ type Model struct {
 func New(cfg *config.Config, activeItem int) Model {
 	items := []MenuItem{
 		{Name: "Overview"},
+		{Name: "Images"},
 		{Name: "SSL"},
 		{Name: "Database"},
 		{Name: "SMTP"},
@@ -50,6 +51,7 @@ func New(cfg *config.Config, activeItem int) Model {
 	}
 
 	editTabs := []EditableTab{
+		tabs.NewImagesTab(cfg),
 		tabs.NewSSLTab(cfg),
 		tabs.NewDatabaseTab(cfg),
 		tabs.NewSMTPTab(cfg),
