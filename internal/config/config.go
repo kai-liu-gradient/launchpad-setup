@@ -33,14 +33,21 @@ func (c *Config) ResolvedProjectDomain() string {
 	return c.Domain
 }
 
-// ImageConfig specifies container image registry and per-service overrides.
+// ImageConfig specifies container image registry, per-service versions, and
+// optional full-image overrides.
 type ImageConfig struct {
-	Registry string `yaml:"registry"`
-	API      string `yaml:"api,omitempty"`
-	UI             string `yaml:"ui,omitempty"`
-	Router         string `yaml:"router,omitempty"`
-	Gateway        string `yaml:"gateway,omitempty"`
-	Gitea          string `yaml:"gitea,omitempty"`
+	Registry       string `yaml:"registry"`
+	APIVersion     string `yaml:"api_version,omitempty"`
+	UIVersion      string `yaml:"ui_version,omitempty"`
+	RouterVersion  string `yaml:"router_version,omitempty"`
+	GatewayVersion string `yaml:"gateway_version,omitempty"`
+	GiteaVersion   string `yaml:"gitea_version,omitempty"`
+	// Full image overrides (advanced). If set, takes priority over registry+version.
+	API     string `yaml:"api,omitempty"`
+	UI      string `yaml:"ui,omitempty"`
+	Router  string `yaml:"router,omitempty"`
+	Gateway string `yaml:"gateway,omitempty"`
+	Gitea   string `yaml:"gitea,omitempty"`
 }
 
 // SSLConfig controls TLS certificate provisioning.
