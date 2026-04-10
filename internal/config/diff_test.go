@@ -51,3 +51,54 @@ func TestDiff_SMTPAdded(t *testing.T) {
 		t.Error("SMTP change should affect api")
 	}
 }
+
+func TestDiff_ImageVersionChanged(t *testing.T) {
+	a := DefaultConfig("example.com")
+	b := DefaultConfig("example.com")
+	b.Images.APIVersion = "3.0.0"
+	d := Diff(a, b)
+	if len(d.Changes) == 0 {
+		t.Fatal("expected changes for image version")
+	}
+	services := d.AffectedServices()
+	found := false
+	for _, s := range services {
+		if s == "api" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("APIVersion change should affect api service")
+	}
+}
+
+func TestDiff_GiteaVersionChanged(t *testing.T) {
+	a := DefaultConfig("example.com")
+	b := DefaultConfig("example.com")
+	b.Images.GiteaVersion = "1.23-rootless"
+	d := Diff(a, b)
+	if len(d.Changes) == 0 {
+		t.Fatal("expected changes for gitea version")
+	}
+	services := d.AffectedServices()
+	found := false
+	for _, s := range services {
+		if s == "gitea" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("GiteaVersion change should affect gitea service")
+	}
+}
+
+func TestDiff_ImageVersionOnlyAffectsTargetService(t *testing.T) {
+	a := DefaultConfig("example.com")
+	b := DefaultConfig("example.com")
+	b.Images.UIVersion = "9.9.9"
+	d := Diff(a, b)
+	services := d.AffectedServices()
+	if len(services) != 1 || services[0] != "ui" {
+		t.Errorf("UIVersion change should only affect ui, got %v", services)
+	}
+}

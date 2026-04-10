@@ -105,13 +105,23 @@ func (d *ConfigDiff) AffectedServices() []string {
 			switch c.Field {
 			case "Images.API":
 				add("api")
+			case "Images.APIVersion":
+				add("api")
 			case "Images.UI":
+				add("ui")
+			case "Images.UIVersion":
 				add("ui")
 			case "Images.Router":
 				add("router")
+			case "Images.RouterVersion":
+				add("router")
 			case "Images.Gateway":
 				add("gateway")
+			case "Images.GatewayVersion":
+				add("gateway")
 			case "Images.Gitea":
+				add("gitea")
+			case "Images.GiteaVersion":
 				add("gitea")
 			default:
 				// Registry change affects all image-based services.
