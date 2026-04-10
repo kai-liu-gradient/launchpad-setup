@@ -26,12 +26,15 @@ func RequiredTools(cfg *config.Config) []ToolCheck {
 		{Name: "curl", Required: true, CheckCmd: "curl", CheckArgs: []string{"--version"}},
 	}
 
-	// Builtin mode: K3s installs kubectl; helm is installed by the engine.
-	// Only check kubectl/helm for external K8s.
+	// helm is needed in both modes (builtin uses it for ingress-nginx, kyverno).
+	checks = append(checks,
+		ToolCheck{Name: "helm", Required: true, CheckCmd: "helm", CheckArgs: []string{"version", "--short"}},
+	)
+
+	// External K8s mode additionally requires kubectl (builtin gets it from K3s).
 	if cfg.Kubernetes.Mode != "builtin" {
 		checks = append(checks,
 			ToolCheck{Name: "kubectl", Required: true, CheckCmd: "kubectl", CheckArgs: []string{"version", "--client"}},
-			ToolCheck{Name: "helm", Required: true, CheckCmd: "helm", CheckArgs: []string{"version", "--short"}},
 		)
 	}
 
