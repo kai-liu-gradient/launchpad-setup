@@ -134,3 +134,38 @@ func TestComputeDerived_ProjectDomain(t *testing.T) {
 		t.Errorf("LaunchpadDomain = %q, want %q", d.LaunchpadDomain, "launchpad.corp.example.com")
 	}
 }
+
+func TestComputeDerived_ImageRefs_VersionOverride(t *testing.T) {
+	cfg := testConfig()
+	cfg.Images.APIVersion = "3.0.0"
+	cfg.Images.GiteaVersion = "1.23-rootless"
+	d := ComputeDerived(cfg, testSecrets())
+
+	wantAPI := config.DefaultImageRegistry + "/launchpad-api:3.0.0"
+	if d.ImageRefs["api"] != wantAPI {
+		t.Errorf("ImageRefs[api] = %q, want %q", d.ImageRefs["api"], wantAPI)
+	}
+
+	wantGitea := "gitea/gitea:1.23-rootless"
+	if d.ImageRefs["gitea"] != wantGitea {
+		t.Errorf("ImageRefs[gitea] = %q, want %q", d.ImageRefs["gitea"], wantGitea)
+	}
+
+	// UI should still use compiled default
+	wantUI := config.DefaultImageRegistry + "/launchpad-ui:" + config.DefaultUIVersion
+	if d.ImageRefs["ui"] != wantUI {
+		t.Errorf("ImageRefs[ui] = %q, want %q", d.ImageRefs["ui"], wantUI)
+	}
+}
+
+func TestComputeDerived_ImageRefs_FullOverrideTakesPriority(t *testing.T) {
+	cfg := testConfig()
+	cfg.Images.APIVersion = "3.0.0"
+	cfg.Images.API = "custom-registry.io/my-api:latest"
+	d := ComputeDerived(cfg, testSecrets())
+
+	// Full override wins over version field
+	if d.ImageRefs["api"] != "custom-registry.io/my-api:latest" {
+		t.Errorf("ImageRefs[api] = %q, want full override", d.ImageRefs["api"])
+	}
+}

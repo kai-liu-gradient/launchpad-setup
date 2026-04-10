@@ -204,31 +204,37 @@ func computeDBConnStrings(cfg *config.Config, sec *secrets.Secrets) map[string]s
 }
 
 // computeImageRefs builds per-service full image references.
-// If an explicit override is set in cfg.Images the override is used as-is;
-// otherwise the reference is composed from the default registry and per-service
-// version constants from versions_gen.go.
+// Priority: full override > registry+versionField > registry+compiledDefault.
 func computeImageRefs(cfg *config.Config) map[string]string {
 	registry := cfg.Images.Registry
 
-	ref := func(override, serviceName, version string) string {
+	ref := func(override, serviceName, versionField, defaultVersion string) string {
 		if override != "" {
 			return override
 		}
-		return registry + "/" + serviceName + ":" + version
+		v := versionField
+		if v == "" {
+			v = defaultVersion
+		}
+		return registry + "/" + serviceName + ":" + v
 	}
 
 	m := map[string]string{
-		"api":     ref(cfg.Images.API, "launchpad-api", config.DefaultAPIVersion),
-		"ui":      ref(cfg.Images.UI, "launchpad-ui", config.DefaultUIVersion),
-		"router":  ref(cfg.Images.Router, "launchpad-router", config.DefaultRouterVersion),
-		"gateway": ref(cfg.Images.Gateway, "ani-code-gateway", config.DefaultGatewayVersion),
+		"api":     ref(cfg.Images.API, "launchpad-api", cfg.Images.APIVersion, config.DefaultAPIVersion),
+		"ui":      ref(cfg.Images.UI, "launchpad-ui", cfg.Images.UIVersion, config.DefaultUIVersion),
+		"router":  ref(cfg.Images.Router, "launchpad-router", cfg.Images.RouterVersion, config.DefaultRouterVersion),
+		"gateway": ref(cfg.Images.Gateway, "ani-code-gateway", cfg.Images.GatewayVersion, config.DefaultGatewayVersion),
 	}
 
 	// Gitea uses Docker Hub (gitea/gitea), not the private registry.
 	if cfg.Images.Gitea != "" {
 		m["gitea"] = cfg.Images.Gitea
 	} else {
-		m["gitea"] = "gitea/gitea:" + config.DefaultGiteaVersion
+		gv := cfg.Images.GiteaVersion
+		if gv == "" {
+			gv = config.DefaultGiteaVersion
+		}
+		m["gitea"] = "gitea/gitea:" + gv
 	}
 
 	return m
